@@ -2,9 +2,18 @@ import streamlit as st
 
 st.title("🎯 Roleta Tracker - 12 Segundos")
 
-# 1. MEMÓRIA RÁPIDA
+# 1. MEMÓRIA RÁPIDA E GATILHO DO ENTER (A solução para o seu teclado)
 if 'historico' not in st.session_state:
     st.session_state.historico = []
+if 'num_input' not in st.session_state:
+    st.session_state.num_input = None
+
+# Esta função é acionada automaticamente quando você aperta ENTER
+def registrar_numero():
+    num = st.session_state.num_input
+    if num is not None:
+        st.session_state.historico.append(int(num))
+        st.session_state.num_input = None # Esvazia a caixa instantaneamente
 
 # 2. FUNÇÕES DE MAPEAMENTO
 def qual_duzia(n):
@@ -31,7 +40,6 @@ if len(st.session_state.historico) > 0:
             atraso += 1
         return atraso
 
-    # Calculando os atrasos exatos
     atrasos = {
         "d1": contar_atraso(qual_duzia, 1),
         "d2": contar_atraso(qual_duzia, 2),
@@ -45,57 +53,53 @@ if len(st.session_state.historico) > 0:
     duzia_atual = qual_duzia(ultimo_num)
     linha_atual = qual_linha(ultimo_num)
 
-    # Identificando quem passou de 5 atrasos
     duzias_atrasadas = [(i, atrasos[f"d{i}"]) for i in range(1, 4) if atrasos[f"d{i}"] >= 5]
     linhas_atrasadas = [(i, atrasos[f"l{i}"]) for i in range(1, 4) if atrasos[f"l{i}"] >= 5]
 
-    # NOVA REGRA DAS DÚZIAS
-    if len(duzias_atrasadas) >= 2:
-        d1_nome, d1_val = duzias_atrasadas[0]
-        d2_nome, d2_val = duzias_atrasadas[1]
-        alertas_verdes.append(f"💤 **APOSTE:** {d1_nome}ª Dúzia + {d2_nome}ª Dúzia (Ambas muito atrasadas: {d1_val} e {d2_val}).")
-    elif len(duzias_atrasadas) == 1:
-        d_nome, d_val = duzias_atrasadas[0]
-        if duzia_atual != 0:
-            alertas_verdes.append(f"💤 **APOSTE:** {d_nome}ª Dúzia + {duzia_atual}ª Dúzia (Última que saiu). *Atraso: {d_val}*")
+    # IDENTIFICANDO A REGRA DE OURO (Ambos atrasados)
+    regra_de_ouro = len(duzias_atrasadas) > 0 and len(linhas_atrasadas) > 0
+    emoji_moeda = " 💰 (REGRA DE OURO!)" if regra_de_ouro else ""
 
-    # NOVA REGRA DAS LINHAS
+    # REGRAS DAS DÚZIAS
+    if len(duzias_atrasadas) >= 2:
+        d1_n, d1_v = duzias_atrasadas[0]
+        d2_n, d2_v = duzias_atrasadas[1]
+        alertas_verdes.append(f"💤 **APOSTE:** {d1_n}ª Dúzia + {d2_n}ª Dúzia (Atrasos: {d1_v} e {d2_v}).{emoji_moeda}")
+    elif len(duzias_atrasadas) == 1:
+        d_n, d_v = duzias_atrasadas[0]
+        if duzia_atual != 0:
+            alertas_verdes.append(f"💤 **APOSTE:** {d_n}ª Dúzia + {duzia_atual}ª Dúzia (Última que saiu). *Atraso: {d_v}*{emoji_moeda}")
+
+    # REGRAS DAS LINHAS
     if len(linhas_atrasadas) >= 2:
-        l1_nome, l1_val = linhas_atrasadas[0]
-        l2_nome, l2_val = linhas_atrasadas[1]
-        alertas_verdes.append(f"🧵 **APOSTE:** {l1_nome}ª Linha + {l2_nome}ª Linha (Ambas muito atrasadas: {l1_val} e {l2_val}).")
+        l1_n, l1_v = linhas_atrasadas[0]
+        l2_n, l2_v = linhas_atrasadas[1]
+        alertas_verdes.append(f"🧵 **APOSTE:** {l1_n}ª Linha + {l2_n}ª Linha (Atrasos: {l1_v} e {l2_v}).{emoji_moeda}")
     elif len(linhas_atrasadas) == 1:
-        l_nome, l_val = linhas_atrasadas[0]
+        l_n, l_v = linhas_atrasadas[0]
         if linha_atual != 0:
-            alertas_verdes.append(f"🧵 **APOSTE:** {l_nome}ª Linha + {linha_atual}ª Linha (Última que saiu). *Atraso: {l_val}*")
+            alertas_verdes.append(f"🧵 **APOSTE:** {l_n}ª Linha + {linha_atual}ª Linha (Última que saiu). *Atraso: {l_v}*{emoji_moeda}")
 
 # 4. EXIBINDO OS ALERTAS NO TOPO
 if alertas_verdes:
     for alerta in alertas_verdes:
         st.success(alerta)
 elif len(st.session_state.historico) > 0:
-    st.info("Monitorando padrões... Registe o próximo número.")
+    st.info("Monitorando padrões... Digite o próximo número.")
 
-# 5. ÁREA DE ENTRADA (Com Enter e Limpeza Automática)
-st.write("**Digite o número (0 a 36):**")
-col_form, col_espaco, col_limpar = st.columns([3, 0.5, 1])
+# 5. ÁREA DE ENTRADA (Agora funciona 100% no Enter)
+st.write("**Digite o número e aperte ENTER (0 a 36):**")
+col_input, col_limpar = st.columns([3, 1])
 
-with col_form:
-    # O clear_on_submit=True esvazia a caixa após o Enter
-    with st.form("registro_form", clear_on_submit=True):
-        col_input, col_btn = st.columns([2, 1])
-        with col_input:
-            # value=None deixa a caixa sem números iniciais
-            numero_sorteado = st.number_input("Digite", min_value=0, max_value=36, step=1, value=None, label_visibility="collapsed")
-        with col_btn:
-            submit = st.form_submit_button("Registrar")
-            if submit and numero_sorteado is not None:
-                st.session_state.historico.append(int(numero_sorteado))
-                st.rerun()
+with col_input:
+    # O segredo do Enter está no on_change=registrar_numero
+    st.number_input("Digite", min_value=0, max_value=36, step=1, value=None, 
+                    key="num_input", on_change=registrar_numero, label_visibility="collapsed")
 
 with col_limpar:
     if st.button("🗑️ Limpar"):
         st.session_state.historico = []
+        st.session_state.num_input = None
         st.rerun()
 
 st.write("---")
@@ -122,6 +126,6 @@ if len(st.session_state.historico) > 0:
         {formata_linha('3ª Linha', atrasos['l3'])}
         """)
         
-    st.caption(f"Últimos números registados: {st.session_state.historico}")
+    st.caption(f"Últimos números registrados: {st.session_state.historico}")
 else:
-    st.info("Nenhum número registado no momento.")
+    st.info("Nenhum número registrado no momento.")
