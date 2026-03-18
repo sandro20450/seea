@@ -28,10 +28,20 @@ def qual_linha(n):
     if n % 3 == 2: return 2
     if n % 3 == 0: return 3
 
+# NOVA FUNÇÃO: Mapeamento Estratégia IPT
+def qual_ipt(n):
+    if n == 0: return '0'
+    if 1 <= n <= 24:
+        return 'I' if n % 2 != 0 else 'P'
+    if 25 <= n <= 36:
+        return 'T'
+
 # 3. O CÉREBRO E OS ALERTAS INTELIGENTES
 alertas_verdes = []
+alertas_amarelos = [] # Novo canal de alertas para o IPT
 
 if len(st.session_state.historico) > 0:
+    # --- LÓGICA DAS DÚZIAS E LINHAS ---
     def contar_atraso(funcao_mapeamento, valor_alvo):
         atraso = 0
         for num in reversed(st.session_state.historico):
@@ -56,7 +66,6 @@ if len(st.session_state.historico) > 0:
     duzias_atrasadas = [(i, atrasos[f"d{i}"]) for i in range(1, 4) if atrasos[f"d{i}"] >= 5]
     linhas_atrasadas = [(i, atrasos[f"l{i}"]) for i in range(1, 4) if atrasos[f"l{i}"] >= 5]
 
-    # IDENTIFICANDO A REGRA DE OURO (Ambos atrasados)
     regra_de_ouro = len(duzias_atrasadas) > 0 and len(linhas_atrasadas) > 0
     emoji_moeda = " 💰 (REGRA DE OURO!)" if regra_de_ouro else ""
 
@@ -86,11 +95,31 @@ if len(st.session_state.historico) > 0:
             else:
                 alertas_verdes.append(f"🧵 **APOSTE:** {l_n}ª Linha + {linha_atual}ª Linha (Última que saiu). *Atraso: {l_v}*")
 
+    # --- LÓGICA DA ESTRATÉGIA IPT (EXCESSO) ---
+    if len(st.session_state.historico) >= 3:
+        ultimos_3 = st.session_state.historico[-3:]
+        grupos_3 = [qual_ipt(n) for n in ultimos_3]
+        
+        # Verifica se os últimos 3 são exatamente do mesmo grupo e não são Zero
+        if grupos_3[0] == grupos_3[1] == grupos_3[2] and grupos_3[0] != '0':
+            grupo_repetido = grupos_3[0]
+            if grupo_repetido == 'I':
+                alertas_amarelos.append("⚡ **ESTRATÉGIA IPT:** O Grupo **I** (Ímpares) saiu 3x seguidas! APOSTE: **Grupo P** + **Grupo T**.")
+            elif grupo_repetido == 'P':
+                alertas_amarelos.append("⚡ **ESTRATÉGIA IPT:** O Grupo **P** (Pares) saiu 3x seguidas! APOSTE: **Grupo I** + **Grupo T**.")
+            elif grupo_repetido == 'T':
+                alertas_amarelos.append("⚡ **ESTRATÉGIA IPT:** O Grupo **T** (25 a 36) saiu 3x seguidas! APOSTE: **Grupo I** + **Grupo P**.")
+
 # 4. EXIBINDO OS ALERTAS NO TOPO
+if alertas_amarelos:
+    for alerta in alertas_amarelos:
+        st.warning(alerta) # Usa o painel amarelo para destacar o Raio
+        
 if alertas_verdes:
     for alerta in alertas_verdes:
         st.success(alerta)
-elif len(st.session_state.historico) > 0:
+        
+if not alertas_verdes and not alertas_amarelos and len(st.session_state.historico) > 0:
     st.info("Monitorando padrões... Digite o próximo número e aperte ENTER.")
 
 # 5. ÁREA DE ENTRADA
@@ -114,7 +143,7 @@ with col_limpar:
 
 st.write("---")
 
-# 6. PAINEL DE ATRASOS COMPACTO
+# 6. PAINEL DE ATRASOS COMPACTO E HISTÓRICO IPT
 if len(st.session_state.historico) > 0:
     st.write("**Atrasos Atuais:**")
     
@@ -135,7 +164,22 @@ if len(st.session_state.historico) > 0:
         {formata_linha('2ª Linha', atrasos['l2'])}
         {formata_linha('3ª Linha', atrasos['l3'])}
         """)
-        
-    st.caption(f"Últimos números registrados: {st.session_state.historico}")
+    
+    st.write("---")
+    
+    # Criando o visual do histórico com as letras (I, P, T)
+    historico_visual = []
+    for n in st.session_state.historico:
+        grp = qual_ipt(n)
+        if grp == '0':
+            historico_visual.append("**0**")
+        else:
+            historico_visual.append(f"{n}**({grp})**")
+            
+    texto_historico = " - ".join(historico_visual)
+    
+    st.write("**Últimos giros (com Grupos IPT):**")
+    st.markdown(texto_historico)
+    
 else:
     st.info("Nenhum número registrado no momento.")
