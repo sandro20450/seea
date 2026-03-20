@@ -35,7 +35,6 @@ def qual_ipt(n):
     if 25 <= n <= 36:
         return 'T'
 
-# NOVA FUNÇÃO: Mapeamento Estratégia 123 (AGORA PERFEITAMENTE EQUILIBRADA COM 12 NÚMEROS CADA)
 def qual_123(n):
     if n == 0: return '0'
     if n in [1, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]: return '1'
@@ -161,9 +160,10 @@ if len(st.session_state.historico) > 0:
     
     st.write("---")
     
-    # Criando o visual do histórico com as duas estratégias
+    # Criando o visual do histórico com as duas estratégias (AGORA COM OS MAIS RECENTES PRIMEIRO)
     historico_visual = []
-    for n in st.session_state.historico:
+    # AQUI ESTÁ A MUDANÇA: Usando reversed() para ler de trás para frente
+    for n in reversed(st.session_state.historico):
         grp_ipt = qual_ipt(n)
         grp_123 = qual_123(n)
         if n == 0:
@@ -173,7 +173,7 @@ if len(st.session_state.historico) > 0:
             
     texto_historico = " - ".join(historico_visual)
     
-    st.write("**Últimos giros (Grupos IPT - 123):**")
+    st.write("**Últimos giros (Mais recentes primeiro):**")
     st.markdown(texto_historico)
     
 else:
