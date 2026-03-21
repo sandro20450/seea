@@ -42,13 +42,13 @@ def qual_123(n):
     if n in [2, 8, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]: return '2'
     if n in [3, 4, 5, 6, 9, 30, 31, 32, 33, 34, 35, 36]: return '3'
 
-# --- NOVA ÁREA: ABASTECIMENTO EM LOTE (Para o início do jogo) ---
+# --- ABASTECIMENTO EM LOTE (Corrigido para o 1º ser o mais recente) ---
 with st.expander("📥 Inserir Histórico Inicial (Lote)"):
     lote_input = st.text_input("Cole os números separados por vírgula (Ex: 14, 15, 32, 0):")
     if st.button("Carregar Histórico"):
         try:
-            # Limpa o histórico atual e carrega os novos
-            st.session_state.historico = [int(x.strip()) for x in lote_input.split(',') if x.strip().isdigit()]
+            # O [::-1] no final inverte a lista, colocando o 22 (mais recente) no lugar certo da memória
+            st.session_state.historico = [int(x.strip()) for x in lote_input.split(',') if x.strip().isdigit()][::-1]
             st.session_state.chave_input += 1
             st.success(f"✅ {len(st.session_state.historico)} números carregados com sucesso!")
         except Exception as e:
@@ -123,7 +123,7 @@ if len(st.session_state.historico) > 0:
             elif grupos_3_123[0] == '2': alertas_amarelos.append("🔥 **ESTRATÉGIA 123:** Conjunto **2** saiu 3x seguidas! APOSTE: **Conjunto 1** + **Conjunto 3**.")
             elif grupos_3_123[0] == '3': alertas_amarelos.append("🔥 **ESTRATÉGIA 123:** Conjunto **3** saiu 3x seguidas! APOSTE: **Conjunto 1** + **Conjunto 2**.")
 
-# 4. EXIBINDO OS ALERTAS NO TOPO
+# 4. EXIBINDO OS ALERTAS
 if alertas_amarelos:
     for alerta in alertas_amarelos:
         st.warning(alerta)
@@ -150,7 +150,7 @@ with col_limpar:
         st.session_state.chave_input += 1
         st.rerun()
 
-# --- TRUQUE DO FOCO AUTOMÁTICO (Corrigido com atraso para o Streamlit respirar) ---
+# --- TRUQUE DO FOCO AUTOMÁTICO ---
 components.html(
     f"""
     <script id="foco_{st.session_state.chave_input}">
@@ -160,7 +160,7 @@ components.html(
         if (inputs.length > 0) {{
             inputs[0].focus();
         }}
-    }}, 100); // 100 milissegundos de atraso garantem que a caixa já foi criada
+    }}, 100);
     </script>
     """,
     height=0, width=0
