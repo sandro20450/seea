@@ -1,55 +1,112 @@
 import streamlit as st
 import requests
 
-st.title("⚽ Radar de Arbitragem - Mercado Esportivo")
+# 1. A SUA CHAVE DE ACESSO (Cole a chave do e-mail dentro das aspas abaixo)
+API_KEY = "06a0a753d3cb6191c16c3a0ec17dbf50" 
 
-# Painel de instruções usando o componente nativo de informação
-st.info("Conectando ao mercado... O radar varre as casas de apostas em busca de distorções matemáticas nas odds.")
+st.title("⚽ Radar de Arbitragem Esportiva")
+st.info("Varrendo o mercado de apostas em busca de lucro matemático (Surebets).")
 
+# 2. ESCOLHENDO O CAMPO DE BATALHA
 st.write("---")
+liga_escolhida = st.selectbox(
+    "Selecione o Campeonato para rastrear:",
+    [
+        ("Futebol Brasileiro (Série A)", "soccer_brazil_campeonato"),
+        ("Liga dos Campeões (UEFA)", "soccer_uefa_champs_league"),
+        ("Campeonato Inglês (Premier League)", "soccer_epl"),
+        ("Campeonato Espanhol (La Liga)", "soccer_spain_la_liga")
+    ],
+    format_func=lambda x: x[0]
+)
 
-# Simulando a entrada de dados de uma API para você ver o visual nativo operando
-# Em breve, substituiremos isso pela leitura real em tempo real da "The-Odds-API"
-jogo_exemplo = "Palmeiras vs. River Plate"
+esporte_id = liga_escolhida[1]
 
-# odds fictícias para demonstrar uma Surebet (Casa A pagando muito no Palmeiras, Casa B pagando muito no River)
-odd_vitoria_casa = 2.50  # Encontrada na Bet365
-odd_empate = 3.40        # Encontrada na Betano
-odd_vitoria_fora = 3.80  # Encontrada na Pinnacle
+# 3. O BOTÃO DE VARREDURA
+if st.button("🚀 Iniciar Varredura de Odds"):
+    if API_KEY == "COLE_SUA_CHAVE_AQUI" or API_KEY == "":
+        st.error("⚠️ Alerta tático: Você esqueceu de colocar a sua API Key na linha 5 do código!")
+    else:
+        with st.spinner('Conectando aos servidores das casas de apostas...'):
+            # Montando o pedido para a API
+            url = f"https://api.the-odds-api.com/v4/sports/{esporte_id}/odds/?apiKey={API_KEY}&regions=eu,uk,us&markets=h2h"
+            
+            resposta = requests.get(url)
+            
+            if resposta.status_code != 200:
+                st.error(f"Erro ao conectar com a API. Código: {resposta.status_code}. Verifique sua chave.")
+            else:
+                jogos = resposta.json()
+                
+                if not jogos:
+                    st.warning("Nenhum jogo encontrado para esta liga com odds abertas no momento.")
+                else:
+                    st.success(f"Radar ativo! Analisando {len(jogos)} jogos...")
+                    
+                    oportunidades_encontradas = 0
+                    
+                    # 4. O CÉREBRO MATEMÁTICO ANALISANDO CADA JOGO
+                    for jogo in jogos:
+                        time_casa = jogo['home_team']
+                        time_fora = jogo['away_team']
+                        
+                        melhor_odd_casa = 0.0
+                        casa_da_odd_casa = ""
+                        melhor_odd_empate = 0.0
+                        casa_da_odd_empate = ""
+                        melhor_odd_fora = 0.0
+                        casa_da_odd_fora = ""
+                        
+                        # Procurando a melhor odd em cada casa de apostas
+                        for bookmaker in jogo['bookmakers']:
+                            nome_casa = bookmaker['title']
+                            mercados = bookmaker['markets']
+                            
+                            for mercado in mercados:
+                                if mercado['key'] == 'h2h': # h2h significa "Head to Head" (Vitória/Empate/Derrota)
+                                    for opcao in mercado['outcomes']:
+                                        odd = opcao['price']
+                                        nome_opcao = opcao['name']
+                                        
+                                        if nome_opcao == time_casa and odd > melhor_odd_casa:
+                                            melhor_odd_casa = odd
+                                            casa_da_odd_casa = nome_casa
+                                        elif nome_opcao == 'Draw' and odd > melhor_odd_empate:
+                                            melhor_odd_empate = odd
+                                            casa_da_odd_empate = nome_casa
+                                        elif nome_opcao == time_fora and odd > melhor_odd_fora:
+                                            melhor_odd_fora = odd
+                                            casa_da_odd_fora = nome_casa
 
-# Exibindo as cotações com st.metric (Visual limpo e direto)
-st.write(f"**Partida Mapeada:** {jogo_exemplo}")
+                        # 5. O CÁLCULO DE ARBITRAGEM (SUREBET)
+                        if melhor_odd_casa > 0 and melhor_odd_empate > 0 and melhor_odd_fora > 0:
+                            margem = (1 / melhor_odd_casa) + (1 / melhor_odd_empate) + (1 / melhor_odd_fora)
+                            
+                            # Condição de Lucro Garantido (Soma menor que 100%)
+                            if margem < 1.0:
+                                oportunidades_encontradas += 1
+                                lucro_pct = (1.0 - margem) * 100
+                                
+                                st.write("---")
+                                st.success(f"🎯 **SUREBET ENCONTRADA:** Lucro de **{lucro_pct:.2f}%**")
+                                st.write(f"**⚽ {time_casa} x {time_fora}**")
+                                
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.metric(label=f"Vitória 1 ({casa_da_odd_casa})", value=f"{melhor_odd_casa}")
+                                with col2:
+                                    st.metric(label=f"Empate ({casa_da_odd_empate})", value=f"{melhor_odd_empate}")
+                                with col3:
+                                    st.metric(label=f"Vitória 2 ({casa_da_odd_fora})", value=f"{melhor_odd_fora}")
+                                    
+                                st.code(f"""
+Para R$ 1.000 investidos:
+- R$ {(1000/melhor_odd_casa)/margem:.2f} na casa '{casa_da_odd_casa}' (Vitória {time_casa})
+- R$ {(1000/melhor_odd_empate)/margem:.2f} na casa '{casa_da_odd_empate}' (Empate)
+- R$ {(1000/melhor_odd_fora)/margem:.2f} na casa '{casa_da_odd_fora}' (Vitória {time_fora})
+-------------------------
+Retorno em qualquer cenário: R$ {(1000/margem):.2f}
+                                """)
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric(label="Vitória (Mandante)", value=f"{odd_vitoria_casa}")
-with col2:
-    st.metric(label="Empate", value=f"{odd_empate}")
-with col3:
-    st.metric(label="Vitória (Visitante)", value=f"{odd_vitoria_fora}")
-
-st.write("---")
-
-# O CÉREBRO DA OPERAÇÃO: O Cálculo de Arbitragem
-# Fórmula: (1 / Odd A) + (1 / Odd Empate) + (1 / Odd B)
-margem_mercado = (1 / odd_vitoria_casa) + (1 / odd_empate) + (1 / odd_vitoria_fora)
-
-if margem_mercado < 1.0:
-    lucro_percentual = (1.0 - margem_mercado) * 100
-    st.success(f"💰 **OPORTUNIDADE DE ARBITRAGEM DETECTADA!** Lucro garantido de **{lucro_percentual:.2f}%**.")
-    
-    st.write("**Instruções de Entrada (Para uma banca de R$ 1.000):**")
-    # Cálculo de distribuição de apostas para garantir o mesmo retorno em qualquer cenário
-    aposta_casa = (1000 / odd_vitoria_casa) / margem_mercado
-    aposta_empate = (1000 / odd_empate) / margem_mercado
-    aposta_fora = (1000 / odd_vitoria_fora) / margem_mercado
-    
-    st.code(f"""
-    1. Aposte R$ {aposta_casa:.2f} na Vitória (Casa A)
-    2. Aposte R$ {aposta_empate:.2f} no Empate (Casa B)
-    3. Aposte R$ {aposta_fora:.2f} na Vitória Visitante (Casa C)
-    
-    Retorno total independentemente de quem vencer: R$ {(1000 / margem_mercado):.2f}
-    """)
-else:
-    st.warning("Nenhuma distorção matemática encontrada para este jogo no momento. A casa ainda tem a vantagem.")
+                    if oportunidades_encontradas == 0:
+                        st.info("Varredura concluída. A matemática das casas está ajustada neste exato segundo. Nenhuma brecha encontrada nesta liga. Tente varrer novamente mais tarde.")
