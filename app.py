@@ -1,153 +1,191 @@
 import streamlit as st
-import requests
-from datetime import datetime, timezone, timedelta
+import pandas as pd
+from datetime import date
 
-# 1. A SUA CHAVE DE ACESSO (Já configurada)
-API_KEY = "06a0a753d3cb6191c16c3a0ec17dbf50" 
+# =============================================================================
+# --- 1. CONFIGURAÇÕES GERAIS E VISUAIS ---
+# =============================================================================
+st.set_page_config(page_title="Portal do Aluno - Projeto Saber", page_icon="🎓", layout="wide")
 
-# --- FILTRO DE CASAS BRASILEIRAS ---
-# Lista atualizada com as suas casas. Mantidas em minúsculas para o filtro não falhar.
-casas_brasileiras = [
-    "bet365", "betano", "betfair", "pinnacle", "1xbet", 
-    "betway", "888sport", "sportingbet", "bwin", "marathonbet", "william hill",
-    "kto", "f12 bet", "superbet", "mostbet", "pixbet"
-]
-
-st.title("⚽ Radar de Arbitragem Esportiva")
-st.info("Varrendo o mercado em busca de lucro matemático (Surebets). Apenas jogos futuros e casas BR.")
-
-st.write("---")
-liga_escolhida = st.selectbox(
-    "Selecione o Campeonato para rastrear:",
-    [
-        ("Futebol Brasileiro (Série A)", "soccer_brazil_campeonato"),
-        ("Liga dos Campeões (UEFA)", "soccer_uefa_champs_league"),
-        ("Campeonato Inglês (Premier League)", "soccer_epl"),
-        ("Campeonato Espanhol (La Liga)", "soccer_spain_la_liga")
-    ],
-    format_func=lambda x: x[0]
-)
-
-esporte_id = liga_escolhida[1]
-
-# O BOTÃO DE VARREDURA
-if st.button("🚀 Iniciar Varredura de Odds (Filtro BR + Idade da Odd)"):
-    with st.spinner('Conectando aos servidores das casas de apostas...'):
-        url = f"https://api.the-odds-api.com/v4/sports/{esporte_id}/odds/?apiKey={API_KEY}&regions=eu,uk,us&markets=h2h"
-        
-        resposta = requests.get(url)
-        
-        if resposta.status_code != 200:
-            st.error(f"Erro ao conectar com a API. Código: {resposta.status_code}. Verifique sua chave.")
-        else:
-            jogos = resposta.json()
-            
-            if not jogos:
-                st.warning("Nenhum jogo encontrado para esta liga com odds abertas no momento.")
-            else:
-                st.success(f"Radar ativo! Analisando jogos...")
-                
-                oportunidades_encontradas = 0
-                agora_utc = datetime.now(timezone.utc)
-                
-                for jogo in jogos:
-                    # --- FILTRO DE TEMPO (Apenas jogos futuros) ---
-                    horario_jogo_str = jogo['commence_time']
-                    horario_jogo_utc = datetime.strptime(horario_jogo_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-                    
-                    if horario_jogo_utc < agora_utc:
-                        continue # Pula jogos que já começaram
-                    
-                    horario_brasilia = horario_jogo_utc - timedelta(hours=3)
-                    data_hora_formatada = horario_brasilia.strftime("%d/%m/%Y às %H:%M")
-                    
-                    time_casa = jogo['home_team']
-                    time_fora = jogo['away_team']
-                    
-                    melhor_odd_casa, melhor_odd_empate, melhor_odd_fora = 0.0, 0.0, 0.0
-                    casa_da_odd_casa, casa_da_odd_empate, casa_da_odd_fora = "", "", ""
-                    
-                    # Variáveis para rastrear a idade da odd
-                    idade_casa, idade_empate, idade_fora = 999, 999, 999
-                    
-                    for bookmaker in jogo['bookmakers']:
-                        nome_casa = bookmaker['title']
-                        nome_casa_minusculo = nome_casa.lower()
-                        
-                        # Filtro Vip: Apenas casas da lista
-                        if not any(casa_br in nome_casa_minusculo for casa_br in casas_brasileiras):
-                            continue 
-                        
-                        # Calcula a idade da odd (atraso da leitura)
-                        ultima_att_str = bookmaker['last_update']
-                        ultima_att_utc = datetime.strptime(ultima_att_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-                        minutos_atras = int((agora_utc - ultima_att_utc).total_seconds() / 60)
-                        
-                        mercados = bookmaker['markets']
-                        
-                        for mercado in mercados:
-                            if mercado['key'] == 'h2h':
-                                for opcao in mercado['outcomes']:
-                                    odd = opcao['price']
-                                    nome_opcao = opcao['name']
-                                    
-                                    if nome_opcao == time_casa and odd > melhor_odd_casa:
-                                        melhor_odd_casa = odd
-                                        casa_da_odd_casa = nome_casa
-                                        idade_casa = minutos_atras
-                                    elif nome_opcao == 'Draw' and odd > melhor_odd_empate:
-                                        melhor_odd_empate = odd
-                                        casa_da_odd_empate = nome_casa
-                                        idade_empate = minutos_atras
-                                    elif nome_opcao == time_fora and odd > melhor_odd_fora:
-                                        melhor_odd_fora = odd
-                                        casa_da_odd_fora = nome_casa
-                                        idade_fora = minutos_atras
-
-                    # O CÁLCULO MATEMÁTICO (SUREBET)
-                    if melhor_odd_casa > 0 and melhor_odd_empate > 0 and melhor_odd_fora > 0:
-                        margem = (1 / melhor_odd_casa) + (1 / melhor_odd_empate) + (1 / melhor_odd_fora)
-                        
-                        # Exige pelo menos 0.5% de lucro para evitar "poeira" de mercado
-                        if margem < 0.995: 
-                            oportunidades_encontradas += 1
-                            lucro_pct = (1.0 - margem) * 100
-                            
-                            st.write("---")
-                            st.success(f"🎯 **SUREBET ENCONTRADA:** Lucro de **{lucro_pct:.2f}%**")
-                            st.write(f"**⚽ {time_casa} x {time_fora}**")
-                            st.write(f"🕒 **Início do Jogo:** {data_hora_formatada} (Brasília)")
-                            
-                            st.caption(f"⏱️ **Atraso da leitura:** Casa ({idade_casa} min) | Empate ({idade_empate} min) | Fora ({idade_fora} min)")
-                            
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric(label=f"Vit. Casa ({casa_da_odd_casa})", value=f"{melhor_odd_casa}")
-                            with col2:
-                                st.metric(label=f"Empate ({casa_da_odd_empate})", value=f"{melhor_odd_empate}")
-                            with col3:
-                                st.metric(label=f"Vit. Fora ({casa_da_odd_fora})", value=f"{melhor_odd_fora}")
-                                
-                            st.code(f"""
-Para R$ 1.000 investidos:
-- R$ {(1000/melhor_odd_casa)/margem:.2f} na casa '{casa_da_odd_casa}'
-- R$ {(1000/melhor_odd_empate)/margem:.2f} na casa '{casa_da_odd_empate}'
-- R$ {(1000/melhor_odd_fora)/margem:.2f} na casa '{casa_da_odd_fora}'
--------------------------
-Retorno Limpo em qualquer cenário: R$ {(1000/margem):.2f}
-                            """)
-
-                if oportunidades_encontradas == 0:
-                    st.info("Varredura concluída. As odds estão alinhadas ou o lucro é menor que 0.5%. Tente novamente nos horários de pico (pré-jogos).")
-
-st.write("---")
-
-# --- PAINEL DE LEMBRETE TÁTICO DOS HORÁRIOS ---
+# CSS para criar os "Botões Lúdicos" e Painéis
 st.markdown("""
-### ⏰ Lembrete Tático: Horários Nobres de Varredura
-O mercado de apostas corrige erros rápido. Concentre suas varreduras nestes momentos de "estresse" nas linhas, onde as distorções acontecem:
+<style>
+    .stApp { background-color: #f4f6f9; color: #333; }
+    h1, h2, h3 { color: #1e3d59 !important; font-family: 'Arial', sans-serif; }
+    
+    /* Cards Lúdicos do Menu Principal */
+    .card-menu {
+        background-color: #ffffff;
+        border-radius: 15px;
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        transition: transform 0.3s ease;
+        border-bottom: 5px solid #007bff;
+        margin-bottom: 20px;
+    }
+    .card-menu:hover { transform: translateY(-5px); }
+    .icon-ludico { font-size: 3.5em; margin-bottom: 10px; }
+    .titulo-card { font-size: 1.2em; font-weight: bold; color: #1e3d59; }
+    
+    /* Estilo para Área Restrita */
+    .painel-restrito {
+        background-color: #e9ecef;
+        border-radius: 10px;
+        padding: 20px;
+        border-left: 5px solid #28a745;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-1. **Sexta-feira (Noite) e Sábado (Manhã cedo):** Abertura das linhas de fim de semana das casas europeias. As casas brasileiras demoram a copiar e geram erros grandes.
-2. **1 a 2 horas antes do jogo:** Anúncio das escalações oficiais. Lesões ou craques poupados fazem as odds oscilarem violentamente.
-3. **Terças e Quartas (13h às 15h - Horário de Brasília):** Foco nas rodadas da Liga dos Campeões (UEFA) e torneios europeus.
-""")
+# =============================================================================
+# --- 2. SISTEMA DE AUTENTICAÇÃO (MOCKUP INICIAL) ---
+# =============================================================================
+# Aqui conectaremos ao Google Sheets depois. Por enquanto, dados de teste.
+MOCK_USERS = {
+    "pai123": {"senha": "123", "perfil": "responsavel", "nome": "João (Pai do Pedrinho)"},
+    "prof456": {"senha": "456", "perfil": "professor", "nome": "Profª Maria (Matemática)"},
+    "admin": {"senha": "admin", "perfil": "diretoria", "nome": "Diretor Carlos"}
+}
+
+if "usuario_logado" not in st.session_state:
+    st.session_state.usuario_logado = None
+if "perfil_logado" not in st.session_state:
+    st.session_state.perfil_logado = None
+
+def fazer_login(usuario, senha):
+    if usuario in MOCK_USERS and MOCK_USERS[usuario]["senha"] == senha:
+        st.session_state.usuario_logado = MOCK_USERS[usuario]["nome"]
+        st.session_state.perfil_logado = MOCK_USERS[usuario]["perfil"]
+        st.success("Acesso Concedido!")
+        st.rerun()
+    else:
+        st.error("Usuário ou senha incorretos!")
+
+def fazer_logout():
+    st.session_state.usuario_logado = None
+    st.session_state.perfil_logado = None
+    st.rerun()
+
+# =============================================================================
+# --- 3. BARRA LATERAL (LOGIN / MENU) ---
+# =============================================================================
+with st.sidebar:
+    st.image("https://cdn-icons-png.flaticon.com/512/3106/3106194.png", width=100) # Ícone de escola genérico
+    st.markdown("### 🏫 Escola Projeto Saber")
+    st.markdown("---")
+    
+    if st.session_state.usuario_logado is None:
+        st.markdown("### 🔐 Portal de Acesso")
+        user_input = st.text_input("Usuário (RA ou Matrícula)")
+        pass_input = st.text_input("Senha", type="password")
+        if st.button("Entrar", use_container_width=True):
+            fazer_login(user_input, pass_input)
+            
+        st.markdown("---")
+        st.info("💡 **Dica de Teste:**\n\n- Pai: `pai123` / Senha: `123`\n- Prof: `prof456` / Senha: `456`\n- Dir: `admin` / Senha: `admin`")
+    else:
+        st.success(f"Olá, {st.session_state.usuario_logado}")
+        st.info(f"Perfil: {st.session_state.perfil_logado.upper()}")
+        if st.button("🚪 Sair (Logout)", use_container_width=True):
+            fazer_logout()
+
+# =============================================================================
+# --- 4. TELA PRINCIPAL (FRONT-END PÚBLICO E PRIVADO) ---
+# =============================================================================
+
+# SE NINGUÉM ESTIVER LOGADO -> MOSTRA A VITRINE DA ESCOLA (Front-end Lúdico)
+if st.session_state.usuario_logado is None:
+    st.markdown("<h1 style='text-align: center;'>Bem-vindo à Escola Projeto Saber! 🎒</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #666;'>Educação de excelência para o futuro do seu filho. Selecione uma opção abaixo:</p><br>", unsafe_allow_html=True)
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown("""
+        <div class="card-menu" style="border-color: #ff9900;">
+            <div class="icon-ludico">📝</div>
+            <div class="titulo-card">Matrículas 2026</div>
+            <p style="font-size:0.9em; color:#666;">Garanta a vaga do seu filho hoje.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Ver Vagas", key="btn_mat"): st.toast("Redirecionando para formulário de matrícula...")
+        
+    with col2:
+        st.markdown("""
+        <div class="card-menu" style="border-color: #28a745;">
+            <div class="icon-ludico">💰</div>
+            <div class="titulo-card">Financeiro</div>
+            <p style="font-size:0.9em; color:#666;">Mensalidades e materiais.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Ver Planos", key="btn_fin"): st.toast("Área de mensalidades em construção.")
+
+    with col3:
+        st.markdown("""
+        <div class="card-menu" style="border-color: #dc3545;">
+            <div class="icon-ludico">📍</div>
+            <div class="titulo-card">Localização</div>
+            <p style="font-size:0.9em; color:#666;">Nossa estrutura física.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Ver Mapa", key="btn_loc"): st.toast("Abrindo Google Maps...")
+
+    with col4:
+        st.markdown("""
+        <div class="card-menu" style="border-color: #17a2b8;">
+            <div class="icon-ludico">📞</div>
+            <div class="titulo-card">Contatos</div>
+            <p style="font-size:0.9em; color:#666;">Fale com a secretaria.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Falar no Zap", key="btn_zap"): st.toast("Abrindo WhatsApp da Escola...")
+
+# SE ESTIVER LOGADO COMO PAI/RESPONSÁVEL
+elif st.session_state.perfil_logado == "responsavel":
+    st.header("🎓 Painel do Aluno")
+    st.markdown('<div class="painel-restrito">Aqui você acompanha o desenvolvimento do Pedrinho.</div><br>', unsafe_allow_html=True)
+    
+    tab_notas, tab_avisos = st.tabs(["📝 Boletim Escolar", "🔔 Mural de Avisos"])
+    with tab_notas:
+        st.subheader("Notas do 1º Bimestre")
+        # Exemplo visual de tabela de notas
+        df_notas = pd.DataFrame({
+            "Disciplina": ["Matemática", "Português", "História", "Ciências"],
+            "Nota": [8.5, 9.0, 7.5, 10.0],
+            "Faltas": [2, 0, 1, 0],
+            "Situação": ["🟢 Aprovado", "🟢 Aprovado", "🟡 Em Exame", "🟢 Aprovado"]
+        })
+        st.dataframe(df_notas, use_container_width=True, hide_index=True)
+    with tab_avisos:
+        st.info("📅 **Reunião de Pais:** Dia 20/04 às 19h no auditório principal.")
+        st.warning("⚽ **Jogos Escolares:** Inscrições abertas para o time de Futsal até sexta-feira.")
+
+# SE ESTIVER LOGADO COMO PROFESSOR
+elif st.session_state.perfil_logado == "professor":
+    st.header("🍎 Diário de Classe - Professor")
+    st.markdown('<div class="painel-restrito" style="border-color: #ff9900;">Lançamento de notas e presença das suas turmas.</div><br>', unsafe_allow_html=True)
+    
+    st.selectbox("Selecione a Turma:", ["6º Ano A", "7º Ano B", "8º Ano A"])
+    st.selectbox("Bimestre:", ["1º Bimestre", "2º Bimestre", "3º Bimestre", "4º Bimestre"])
+    
+    st.markdown("### Lançar Notas:")
+    col_a, col_b = st.columns([3, 1])
+    with col_a: st.text_input("Nome do Aluno", "Pedrinho da Silva")
+    with col_b: st.number_input("Nota", min_value=0.0, max_value=10.0, value=0.0)
+    st.button("💾 Salvar Nota", type="primary")
+
+# SE ESTIVER LOGADO COMO DIRETORIA (ADMIN)
+elif st.session_state.perfil_logado == "diretoria":
+    st.header("👑 Painel de Controle - Diretoria")
+    st.markdown('<div class="painel-restrito" style="border-color: #dc3545;">Gestão total do sistema e banco de dados.</div><br>', unsafe_allow_html=True)
+    
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total de Alunos", "450", "+12 matrículas")
+    c2.metric("Professores Ativos", "25", "100% presentes")
+    c3.metric("Mensalidades Atrasadas", "5", "-2 regularizadas")
+    
+    st.markdown("---")
+    st.subheader("Gerenciar Cadastros")
+    st.selectbox("O que deseja gerenciar?", ["🏫 Alunos", "🍎 Professores", "💰 Financeiro"])
+    st.button("➕ Adicionar Novo Registro")
