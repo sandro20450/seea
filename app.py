@@ -263,41 +263,39 @@ elif st.session_state.perfil_logado == "professor":
                 gerar_prova_btn = st.form_submit_button("🚀 Elaborar Avaliação Inédita com IA", type="primary", use_container_width=True)
 
             if gerar_prova_btn and assunto:
-                with st.spinner("Conectando ao núcleo de IA do Gemini... Procurando motor autorizado..."):
+                with st.spinner("Conectando ao núcleo de IA do Gemini... Elaborando prova..."):
                     try:
-                        modelos_disponiveis = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                        # Tiro Direto (Economiza cota do limite grátis)
+                        modelo = genai.GenerativeModel('gemini-1.5-flash')
+                        prompt = f"Você é um professor experiente elaborando uma prova escolar. Assunto: {assunto}. Nível de Dificuldade: {nivel_dif}. Quantidade de Questões: {qtd_quest}. Tipo de Questões: {tipo_quest}. Peso de cada questão: {peso_quest} pontos. Por favor, gere uma avaliação completa e formatada. Inclua um cabeçalho escolar no topo (Escola Projeto Saber, Nome, Data). As questões devem ser desafiadoras e adequadas ao nível solicitado. NÃO coloque o gabarito junto com a prova. Obrigatório: Gere o GABARITO COMPLETO apenas no final do documento, após um divisor de linha, claramente marcado como 'GABARITO DO PROFESSOR'."
                         
-                        if not modelos_disponiveis:
-                            st.error("⚠️ Erro Crítico: Chave sem permissão para texto.")
-                        else:
-                            modelos_preferidos = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-1.0-pro', 'models/gemini-pro']
-                            modelo_escolhido = None
-                            
-                            for pref in modelos_preferidos:
-                                if pref in modelos_disponiveis:
-                                    modelo_escolhido = pref
-                                    break
-                            
-                            if not modelo_escolhido:
-                                modelo_escolhido = modelos_disponiveis[0]
-                                
-                            modelo = genai.GenerativeModel(modelo_escolhido)
-                            prompt = f"Você é um professor experiente elaborando uma prova escolar. Assunto: {assunto}. Nível de Dificuldade: {nivel_dif}. Quantidade de Questões: {qtd_quest}. Tipo de Questões: {tipo_quest}. Peso de cada questão: {peso_quest} pontos. Por favor, gere uma avaliação completa e formatada. Inclua um cabeçalho escolar no topo (Escola Projeto Saber, Nome, Data). As questões devem ser desafiadoras e adequadas ao nível solicitado. NÃO coloque o gabarito junto com a prova. Obrigatório: Gere o GABARITO COMPLETO apenas no final do documento, após um divisor de linha, claramente marcado como 'GABARITO DO PROFESSOR'."
-                            
-                            resposta = modelo.generate_content(prompt)
+                        # Desligando os escudos de segurança para não bloquear assuntos de biologia ou história
+                        safety_settings = [
+                            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                        ]
+                        
+                        resposta = modelo.generate_content(prompt, safety_settings=safety_settings)
+                        
+                        try:
                             texto_prova = resposta.text
-                            
                             st.success("✅ Avaliação forjada com sucesso pela Inteligência Artificial!")
                             st.text_area("📄 Pré-Visualização do Documento:", texto_prova, height=500)
                             
                             col_exp1, col_exp2 = st.columns(2)
                             with col_exp1: st.download_button(label="📥 Baixar (.TXT)", data=texto_prova, file_name=f"Prova_{assunto.replace(' ', '_')}.txt", mime="text/plain", use_container_width=True)
                             with col_exp2: st.button("🖨️ Imprimir / Salvar PDF (Ctrl+P)", use_container_width=True)
+                        except ValueError:
+                            st.error("⚠️ A IA gerou a prova, mas o filtro de segurança de texto bloqueou a exibição. Tente um assunto diferente.")
                             
                     except Exception as e:
-                        # O ESCUDO DE TRATAMENTO DE ERRO (V11.0)
                         erro_str = str(e).lower()
                         if "429" in erro_str or "quota" in erro_str:
-                            st.warning("🚦 **Servidor Ocupado:** O limite gratuito da Inteligência Artificial foi atingido temporariamente. Por favor, aguarde 1 minuto e aperte o botão novamente.")
+                            st.warning("🚦 **Servidor Ocupado:** O limite gratuito da IA foi atingido. Aguarde 1 minuto e tente novamente.")
+                        elif "api_key" in erro_str or "key invalid" in erro_str:
+                            st.error("🔑 **Erro na Chave:** A sua chave da API está inválida ou foi digitada incorretamente.")
                         else:
-                            st.error(f"⚠️ Ocorreu uma instabilidade na conexão: {e}")
+                            # Imprime a falha exata na tela para nós vermos
+                            st.error(f"⚠️ Erro de conexão com a IA: {e}")
