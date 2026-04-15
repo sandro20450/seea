@@ -265,11 +265,10 @@ elif st.session_state.perfil_logado == "professor":
             if gerar_prova_btn and assunto:
                 with st.spinner("Conectando ao núcleo de IA do Gemini... Elaborando prova..."):
                     try:
-                        # Tiro Direto (Economiza cota do limite grátis)
-                        modelo = genai.GenerativeModel('gemini-1.5-flash')
+                        # TIRO DIRETO: Usando exatamente o motor que o Google validou no seu projeto
+                        modelo = genai.GenerativeModel('gemini-2.5-flash')
                         prompt = f"Você é um professor experiente elaborando uma prova escolar. Assunto: {assunto}. Nível de Dificuldade: {nivel_dif}. Quantidade de Questões: {qtd_quest}. Tipo de Questões: {tipo_quest}. Peso de cada questão: {peso_quest} pontos. Por favor, gere uma avaliação completa e formatada. Inclua um cabeçalho escolar no topo (Escola Projeto Saber, Nome, Data). As questões devem ser desafiadoras e adequadas ao nível solicitado. NÃO coloque o gabarito junto com a prova. Obrigatório: Gere o GABARITO COMPLETO apenas no final do documento, após um divisor de linha, claramente marcado como 'GABARITO DO PROFESSOR'."
                         
-                        # Desligando os escudos de segurança para não bloquear assuntos de biologia ou história
                         safety_settings = [
                             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
                             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -288,7 +287,7 @@ elif st.session_state.perfil_logado == "professor":
                             with col_exp1: st.download_button(label="📥 Baixar (.TXT)", data=texto_prova, file_name=f"Prova_{assunto.replace(' ', '_')}.txt", mime="text/plain", use_container_width=True)
                             with col_exp2: st.button("🖨️ Imprimir / Salvar PDF (Ctrl+P)", use_container_width=True)
                         except ValueError:
-                            st.error("⚠️ A IA gerou a prova, mas o filtro de segurança de texto bloqueou a exibição. Tente um assunto diferente.")
+                            st.error("⚠️ A IA gerou a prova, mas o filtro interno do Google bloqueou a exibição. Tente um assunto diferente.")
                             
                     except Exception as e:
                         erro_str = str(e).lower()
@@ -297,5 +296,4 @@ elif st.session_state.perfil_logado == "professor":
                         elif "api_key" in erro_str or "key invalid" in erro_str:
                             st.error("🔑 **Erro na Chave:** A sua chave da API está inválida ou foi digitada incorretamente.")
                         else:
-                            # Imprime a falha exata na tela para nós vermos
                             st.error(f"⚠️ Erro de conexão com a IA: {e}")
