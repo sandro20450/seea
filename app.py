@@ -54,7 +54,6 @@ def carregar_turmas():
         if gc:
             ws = gc.open("Base_SEEA").worksheet("Alunos")
             records = ws.get_all_records()
-            # Puxa apenas as turmas únicas que existem na planilha
             turmas = list(set([str(r['turma']) for r in records if str(r['turma']).strip() != ""]))
             return sorted(turmas) if turmas else ["Selecione..."]
     except:
@@ -119,7 +118,6 @@ with st.sidebar:
     else:
         st.markdown(f"""<div style='background-color: #d4edda; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center; border: 1px solid #c3e6cb;'><span style='color: #155724 !important; font-weight: bold; font-size: 1.1em;'>👤 {st.session_state.usuario_logado}</span></div>""", unsafe_allow_html=True)
         
-        # Menu dinâmico baseado no perfil
         if st.session_state.perfil_logado == "professor":
             st.markdown("<span style='color:#888; font-size:0.8em; font-weight:bold;'>PEDAGÓGICO</span>", unsafe_allow_html=True)
             st.button("📖 Diário de Classe", use_container_width=True)
@@ -143,23 +141,15 @@ if st.session_state.usuario_logado is None:
     with col3: st.warning("📍 **Localização**\n\nVeja como chegar à escola.")
     with col4: st.error("📞 **Contatos**\n\nFale com a secretaria.")
 
-# ---------------------------------------------------------
-# TELA DIRETORIA / ADMIN
-# ---------------------------------------------------------
 elif st.session_state.perfil_logado in ["admin", "diretoria"]:
     st.header("👑 Painel da Diretoria")
     st.markdown("Você está conectado como Administrador. O sistema identificou o seu nível de acesso máximo.")
-    
     c1, c2, c3 = st.columns(3)
     c1.metric("Alunos Cadastrados", "Base_SEEA", "Conectado")
     c2.metric("Inteligência Artificial", "Gemini API", "Online" if ia_configurada else "Offline")
     c3.metric("Status do Servidor", "Estável", "100%")
-    
     st.info("Para testar o Diário de Classe e o Gerador de Provas, altere o seu `perfil` na planilha para `professor` ou crie um novo usuário para os professores.")
 
-# ---------------------------------------------------------
-# TELA DO PROFESSOR
-# ---------------------------------------------------------
 elif st.session_state.perfil_logado == "professor":
     aba_dash, aba_freq, aba_notas, aba_ia = st.tabs(["📊 Dashboard", "📅 Frequência", "📝 Notas", "🤖 Gerador IA (Real)"])
     
@@ -177,7 +167,6 @@ elif st.session_state.perfil_logado == "professor":
         st.markdown("<div style='background-color:#ffffff; padding:20px; border-radius:10px; border: 1px solid #e0e0e0; margin-bottom: 20px;'>", unsafe_allow_html=True)
         col_turma, col_data = st.columns(2)
         
-        # Puxa turmas direto da planilha!
         lista_turmas = carregar_turmas()
         with col_turma: selecao_turma = st.selectbox("Turma:", lista_turmas, key="freq_turma")
         with col_data: st.date_input("Data da Aula:", date.today())
@@ -262,10 +251,10 @@ elif st.session_state.perfil_logado == "professor":
     with aba_ia:
         st.markdown("<h2>🤖 Fábrica de Avaliações com IA</h2>", unsafe_allow_html=True)
         if not ia_configurada:
-            st.error("⚠️ **Sistema Desconectado:** A chave da API do Gemini não foi encontrada no painel Secrets.")
+            st.error("⚠️ **Sistema Desconectado:** A chave da API do Gemini não foi encontrada.")
         else:
             with st.form("form_ia_gerador"):
-                assunto = st.text_area("📚 Assunto(s) da Avaliação", placeholder="Ex: Equações de 2º Grau, Revolução Francesa, Biologia Celular...")
+                assunto = st.text_area("📚 Assunto(s) da Avaliação", placeholder="Ex: Equações de 2º Grau, Revolução Francesa...")
                 c_ia1, c_ia2, c_ia3, c_ia4 = st.columns(4)
                 with c_ia1: tipo_quest = st.selectbox("📝 Tipo de Questão", ["Múltipla Escolha (A-E)", "Abertas (Dissertativas)", "Mista (50/50)"])
                 with c_ia2: nivel_dif = st.selectbox("⚙️ Dificuldade", ["Fácil", "Médio", "Difícil"])
@@ -276,7 +265,8 @@ elif st.session_state.perfil_logado == "professor":
             if gerar_prova_btn and assunto:
                 with st.spinner("Conectando ao núcleo de IA do Gemini... Elaborando prova inédita..."):
                     try:
-                        modelo = genai.GenerativeModel('gemini-1.5-flash')
+                        # A MÁGICA ACONTECE AQUI: Usando o motor 'gemini-pro' universal
+                        modelo = genai.GenerativeModel('gemini-pro')
                         prompt = f"Você é um professor experiente elaborando uma prova escolar. Assunto: {assunto}. Nível de Dificuldade: {nivel_dif}. Quantidade de Questões: {qtd_quest}. Tipo de Questões: {tipo_quest}. Peso de cada questão: {peso_quest} pontos. Por favor, gere uma avaliação completa e formatada. Inclua um cabeçalho escolar no topo (Escola Projeto Saber, Nome, Data). As questões devem ser desafiadoras e adequadas ao nível solicitado. NÃO coloque o gabarito junto com a prova. Obrigatório: Gere o GABARITO COMPLETO apenas no final do documento, após um divisor de linha, claramente marcado como 'GABARITO DO PROFESSOR'."
                         resposta = modelo.generate_content(prompt)
                         texto_prova = resposta.text
