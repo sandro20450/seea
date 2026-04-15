@@ -5,6 +5,8 @@ import time
 import gspread
 from google.oauth2.service_account import Credentials
 import google.generativeai as genai
+import PyPDF2
+import io
 
 # =============================================================================
 # --- 1. CONFIGURAÇÕES GERAIS E VISUAIS ---
@@ -148,10 +150,9 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
     c1.metric("Alunos Cadastrados", "Base_SEEA", "Conectado")
     c2.metric("Inteligência Artificial", "Gemini API", "Online" if ia_configurada else "Offline")
     c3.metric("Status do Servidor", "Estável", "100%")
-    st.info("Para testar o Diário de Classe e o Gerador de Provas, altere o seu `perfil` na planilha para `professor` ou crie um novo usuário para os professores.")
 
 elif st.session_state.perfil_logado == "professor":
-    aba_dash, aba_freq, aba_notas, aba_ia = st.tabs(["📊 Dashboard", "📅 Frequência", "📝 Notas", "🤖 Gerador IA (Real)"])
+    aba_dash, aba_freq, aba_notas, aba_ia = st.tabs(["📊 Dashboard", "📅 Frequência", "📝 Notas", "🤖 Gerador IA"])
     
     with aba_dash:
         st.markdown("<h2>Visão Geral</h2>", unsafe_allow_html=True)
@@ -246,7 +247,7 @@ elif st.session_state.perfil_logado == "professor":
             st.button("💾 Salvar Diário de Notas", type="primary", use_container_width=True)
 
     # ---------------------------------------------------------
-    # ABA 4: GERADOR DE PROVAS COM INTELIGÊNCIA ARTIFICIAL REAL
+    # ABA 4: GERADOR DE PROVAS COM INTELIGÊNCIA ARTIFICIAL E LEITOR DE ARQUIVOS
     # ---------------------------------------------------------
     with aba_ia:
         st.markdown("<h2>🤖 Fábrica de Avaliações com IA</h2>", unsafe_allow_html=True)
@@ -254,7 +255,13 @@ elif st.session_state.perfil_logado == "professor":
             st.error("⚠️ **Sistema Desconectado:** A chave da API do Gemini não foi encontrada no cofre.")
         else:
             with st.form("form_ia_gerador"):
-                assunto = st.text_area("📚 Assunto(s) da Avaliação", placeholder="Ex: Equações de 2º Grau, Revolução Francesa...")
+                # NOVO: UPLOAD DE ARQUIVOS PARA LEITURA DA IA
+                st.markdown("#### 1. Material de Referência (Opcional, mas recomendado)")
+                arquivo_upload = st.file_uploader("📄 Envie um resumo, texto ou conteúdo base (Apenas PDF ou TXT)", type=["pdf", "txt"])
+                
+                st.markdown("#### 2. Configurações da Avaliação")
+                assunto = st.text_input("📚 Assunto Principal", placeholder="Ex: Fotossíntese, Equações de 2º Grau...")
+                
                 c_ia1, c_ia2, c_ia3, c_ia4 = st.columns(4)
                 with c_ia1: tipo_quest = st.selectbox("📝 Tipo de Questão", ["Múltipla Escolha (A-E)", "Abertas (Dissertativas)", "Mista (50/50)"])
                 with c_ia2: nivel_dif = st.selectbox("⚙️ Dificuldade", ["Fácil", "Médio", "Difícil"])
@@ -262,23 +269,47 @@ elif st.session_state.perfil_logado == "professor":
                 with c_ia4: peso_quest = st.number_input("⚖️ Peso por Questão", min_value=0.1, max_value=10.0, value=1.0, step=0.1)
                 gerar_prova_btn = st.form_submit_button("🚀 Elaborar Avaliação Inédita com IA", type="primary", use_container_width=True)
 
-            if gerar_prova_btn and assunto:
-                with st.spinner("Conectando ao núcleo de IA do Gemini... Elaborando prova..."):
-                    try:
-                        # TIRO DIRETO: Usando exatamente o motor que o Google validou no seu projeto
-                        modelo = genai.GenerativeModel('gemini-2.5-flash')
-                        prompt = f"Você é um professor experiente elaborando uma prova escolar. Assunto: {assunto}. Nível de Dificuldade: {nivel_dif}. Quantidade de Questões: {qtd_quest}. Tipo de Questões: {tipo_quest}. Peso de cada questão: {peso_quest} pontos. Por favor, gere uma avaliação completa e formatada. Inclua um cabeçalho escolar no topo (Escola Projeto Saber, Nome, Data). As questões devem ser desafiadoras e adequadas ao nível solicitado. NÃO coloque o gabarito junto com a prova. Obrigatório: Gere o GABARITO COMPLETO apenas no final do documento, após um divisor de linha, claramente marcado como 'GABARITO DO PROFESSOR'."
-                        
-                        safety_settings = [
-                            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-                        ]
-                        
-                        resposta = modelo.generate_content(prompt, safety_settings=safety_settings)
-                        
+            if gerar_prova_btn:
+                if not assunto and not arquivo_upload:
+                    st.warning("⚠️ Por favor, digite um Assunto ou envie um Arquivo Base para a IA analisar.")
+                else:
+                    with st.spinner("Lendo material e conectando ao núcleo de IA... Elaborando prova..."):
                         try:
+                            # Processamento do arquivo (se houver)
+                            texto_extraido = ""
+                            if arquivo_upload is not None:
+                                try:
+                                    if arquivo_upload.name.endswith(".txt"):
+                                        texto_extraido = arquivo_upload.read().decode("utf-8")
+                                    elif arquivo_upload.name.endswith(".pdf"):
+                                        leitor_pdf = PyPDF2.PdfReader(arquivo_upload)
+                                        for pagina in leitor_pdf.pages:
+                                            texto_extraido += pagina.extract_text() + "\n"
+                                except Exception as e:
+                                    st.error(f"Não foi possível ler o arquivo enviado. Detalhes: {e}")
+                                    texto_extraido = ""
+
+                            # O RETORNO DO REI: O motor 2.5 que sabemos que funciona na sua chave!
+                            modelo = genai.GenerativeModel('gemini-2.5-flash')
+                            
+                            # Montando a ordem exata para a IA
+                            prompt = f"Você é um professor elaborando uma prova. Assunto: {assunto}. Nível: {nivel_dif}. Qtd Questões: {qtd_quest}. Tipo: {tipo_quest}. Peso: {peso_quest} pts/cada.\n"
+                            
+                            if texto_extraido != "":
+                                prompt += f"\nATENÇÃO: Utilize o texto abaixo como sua ÚNICA e EXCLUSIVA fonte de informações para formular as questões. Não invente dados que não estejam no texto:\n\n---\n{texto_extraido[:15000]}\n---\n"
+                            
+                            prompt += "\nFormate a prova de forma limpa. Inclua um cabeçalho escolar (Escola Projeto Saber, Nome, Data). NÃO coloque o gabarito junto com a prova. O GABARITO DEVE FICAR APENAS NO FINAL, isolado por uma linha e marcado como 'GABARITO DO PROFESSOR'."
+                            
+                            # Filtros desligados para não dar falso positivo em biologia/história
+                            safety_settings = [
+                                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                            ]
+                            
+                            resposta = modelo.generate_content(prompt, safety_settings=safety_settings)
+                            
                             texto_prova = resposta.text
                             st.success("✅ Avaliação forjada com sucesso pela Inteligência Artificial!")
                             st.text_area("📄 Pré-Visualização do Documento:", texto_prova, height=500)
@@ -286,14 +317,12 @@ elif st.session_state.perfil_logado == "professor":
                             col_exp1, col_exp2 = st.columns(2)
                             with col_exp1: st.download_button(label="📥 Baixar (.TXT)", data=texto_prova, file_name=f"Prova_{assunto.replace(' ', '_')}.txt", mime="text/plain", use_container_width=True)
                             with col_exp2: st.button("🖨️ Imprimir / Salvar PDF (Ctrl+P)", use_container_width=True)
-                        except ValueError:
-                            st.error("⚠️ A IA gerou a prova, mas o filtro interno do Google bloqueou a exibição. Tente um assunto diferente.")
-                            
-                    except Exception as e:
-                        erro_str = str(e).lower()
-                        if "429" in erro_str or "quota" in erro_str:
-                            st.warning("🚦 **Servidor Ocupado:** O limite gratuito da IA foi atingido. Aguarde 1 minuto e tente novamente.")
-                        elif "api_key" in erro_str or "key invalid" in erro_str:
-                            st.error("🔑 **Erro na Chave:** A sua chave da API está inválida ou foi digitada incorretamente.")
-                        else:
-                            st.error(f"⚠️ Erro de conexão com a IA: {e}")
+                                
+                        except Exception as e:
+                            erro_str = str(e).lower()
+                            if "429" in erro_str or "quota" in erro_str:
+                                st.warning("🚦 **Servidor Ocupado:** O limite gratuito da IA foi atingido ou sua chave está bloqueada temporariamente pelo uso excessivo. Tente novamente mais tarde.")
+                            elif "api_key" in erro_str or "key invalid" in erro_str:
+                                st.error("🔑 **Erro na Chave:** A sua chave da API está inválida ou foi digitada incorretamente.")
+                            else:
+                                st.error(f"⚠️ Erro de conexão com a IA: {e}")
