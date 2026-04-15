@@ -175,17 +175,23 @@ elif st.session_state.perfil_logado == "professor":
             st.markdown("**01/05** - Dia do Trabalho")
             
     # ---------------------------------------------------------
-    # ABA 2: FREQUÊNCIA
+    # ABA 2: FREQUÊNCIA E DIÁRIO DE AULA (ATUALIZADO V5.0)
     # ---------------------------------------------------------
     with aba_freq:
-        st.markdown("<h2>Registro de Frequência</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='color:#666;'>Selecione o status de presença para cada aluno.</p>", unsafe_allow_html=True)
+        st.markdown("<h2>Registro de Frequência e Conteúdo</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#666;'>Preencha os dados da aula e selecione o status de presença para cada aluno.</p>", unsafe_allow_html=True)
         
+        # Bloco Superior: Informações da Aula
+        st.markdown("<div style='background-color:#ffffff; padding:20px; border-radius:10px; border: 1px solid #e0e0e0; margin-bottom: 20px;'>", unsafe_allow_html=True)
         col_turma, col_data = st.columns(2)
         with col_turma: st.selectbox("Turma:", ["6º Ano A", "7º Ano B", "8º Ano A"], key="freq_turma")
         with col_data: st.date_input("Data da Aula:", date.today())
         
-        st.markdown("---")
+        # NOVO CAMPO: Assunto da Aula
+        assunto_aula = st.text_area("📚 Assunto do Dia / Conteúdo Lecionado:", placeholder="Descreva os conteúdos abordados nesta aula. Ex: Resolução de exercícios de frações...", height=100)
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Bloco Inferior: Lista de Chamada
         st.markdown("<div style='display:flex; justify-content:space-between; padding:0 20px; color:#004d99; font-weight:bold;'><span>ALUNO</span><span>STATUS DE PRESENÇA</span></div>", unsafe_allow_html=True)
         st.markdown("<hr style='margin:5px 0; border-top: 2px solid #ccc;'>", unsafe_allow_html=True)
         
@@ -197,7 +203,11 @@ elif st.session_state.perfil_logado == "professor":
                 st.radio("Status", ["P (Presente)", "F (Falta)", "FJ (Justificada)"], horizontal=True, label_visibility="collapsed", key=f"rad_{aluno}")
             st.markdown("<hr style='margin:5px 0; opacity:0.3;'>", unsafe_allow_html=True)
         
-        st.button("💾 Salvar Frequência", type="primary", use_container_width=True)
+        if st.button("💾 Salvar Frequência e Assunto do Dia", type="primary", use_container_width=True):
+            if assunto_aula.strip() == "":
+                st.warning("⚠️ Atenção: Você não preencheu o Assunto da Aula, mas a frequência foi salva.")
+            else:
+                st.success("✅ Frequência e Diário de Conteúdo salvos com sucesso!")
 
     # ---------------------------------------------------------
     # ABA 3: NOTAS (DIÁRIO DE CLASSE)
@@ -277,7 +287,7 @@ elif st.session_state.perfil_logado == "professor":
             with col_btn2: st.button("💾 Salvar Diário de Notas", type="primary", use_container_width=True)
 
     # ---------------------------------------------------------
-    # ABA 4: GERADOR DE PROVAS COM IA (O NOVO ARSENAL)
+    # ABA 4: GERADOR DE PROVAS COM IA
     # ---------------------------------------------------------
     with aba_ia:
         st.markdown("<h2>🤖 Fábrica de Avaliações com IA</h2>", unsafe_allow_html=True)
