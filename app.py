@@ -63,7 +63,6 @@ st.markdown("""
     [data-testid="metric-container"]:hover {
         transform: translateY(-3px);
     }
-    /* Estilo especial para o container de matrícula */
     .matricula-box {
         background-color: rgba(0, 123, 255, 0.05);
         border: 2px solid #004d99;
@@ -96,26 +95,21 @@ def fetch_sheet_data_cached(nome_aba):
     return []
 
 def carregar_tabela_completa(nome_aba):
-    """
-    Função blindada contra o erro de 'Duplicate column names'.
-    Ignora colunas sem cabeçalho e evita nomes repetidos.
-    """
     try:
         dados = fetch_sheet_data_cached(nome_aba)
         if not dados:
             if nome_aba == "Avisos": return pd.DataFrame(columns=["tipo", "aluno", "mensagem", "data"])
             if nome_aba == "Matriculas": return pd.DataFrame(columns=["Já Matriculado (Sim/Não)", "Nome do aluno(a)"])
+            if nome_aba == "Usuarios": return pd.DataFrame(columns=["usuario", "senha", "perfil", "nome"])
             return pd.DataFrame()
         
-        # LÓGICA DE BLINDAGEM DE COLUNAS
         cabecalhos_brutos = dados[0]
         cabecalhos_limpos = []
         indices_validos = []
         
         for i, c in enumerate(cabecalhos_brutos):
             nome_col = str(c).strip()
-            if nome_col != "": # Se a coluna tem um título válido
-                # Se o nome já existir, adiciona um número para não duplicar
+            if nome_col != "":
                 if nome_col in cabecalhos_limpos:
                     nome_col = f"{nome_col}_{i}"
                 cabecalhos_limpos.append(nome_col)
@@ -124,14 +118,12 @@ def carregar_tabela_completa(nome_aba):
         if len(dados) == 1:
             df = pd.DataFrame(columns=cabecalhos_limpos)
         else:
-            # Constrói a tabela apenas com as colunas válidas
             dados_filtrados = []
             for linha in dados[1:]:
                 linha_limpa = [linha[i] if i < len(linha) else "" for i in indices_validos]
                 dados_filtrados.append(linha_limpa)
             df = pd.DataFrame(dados_filtrados, columns=cabecalhos_limpos)
         
-        # Mantém colunas originais para a aba Matriculas
         if nome_aba != "Matriculas":
             df.columns = df.columns.str.lower()
             
@@ -139,7 +131,6 @@ def carregar_tabela_completa(nome_aba):
     except Exception as e:
         return pd.DataFrame()
 
-# Função para salvar a matrícula
 def salvar_matricula_bd(dados_dicionario):
     try:
         gc = get_gspread_client()
@@ -164,6 +155,77 @@ def salvar_matricula_bd(dados_dicionario):
         st.error(f"Erro ao salvar matrícula no banco: {e}")
         return False
 
+def sincronizar_aba_completa(nome_aba, df_editado):
+    try:
+        gc = get_gspread_client()
+        if gc:
+            ws = gc.open("Base_SEEA").worksheet(nome_aba)
+            df_editado = df_editado.fillna("")
+            dados_lista = [df_editado.columns.values.tolist()] + df_editado.values.tolist()
+            ws.clear()
+            ws.update(values=dados_lista, range_name="A1")
+            st.cache_data.clear()
+            return True
+    except Exception as e:
+        st.error(f"Erro ao sincronizar a aba {nome_aba}: {e}")
+        return False
+
+# =============================================================================
+# --- NOVO: FUNÇÃO DE AUTOMAÇÃO DE LOGINS ---
+# =============================================================================
+def gerar_logins_alunos_automatico():
+    """Lê a lista de alunos, verifica quem não tem login e cria acessos automáticos."""
+    df_alunos = carregar_tabela_completa("Alunos")
+    df_usuarios = carregar_tabela_completa("Usuarios")
+    
+    if df_alunos.empty or 'nome_aluno' not in df_alunos.columns:
+        return False, "Nenhum aluno cadastrado na base de dados para gerar logins."
+        
+    if df_usuarios.empty:
+        df_usuarios = pd.DataFrame(columns=["usuario", "senha", "perfil", "nome"])
+        
+    nomes_alunos = df_alunos['nome_aluno'].dropna().unique()
+    nomes_com_login = df_usuarios['nome'].dropna().unique() if 'nome' in df_usuarios.columns else []
+    usuarios_existentes = df_usuarios['usuario'].dropna().unique() if 'usuario' in df_usuarios.columns else []
+    
+    novos_usuarios = []
+    for nome in nomes_alunos:
+        nome_str = str(nome).strip()
+        if nome_str and nome_str not in nomes_com_login:
+            # Lógica de criação do nome de usuário: "primeironome.ultimonome@aluno"
+            partes = nome_str.split()
+            if len(partes) > 1:
+                base_user = f"{partes[0].lower()}.{partes[-1].lower()}@aluno"
+            else:
+                base_user = f"{partes[0].lower()}@aluno"
+                
+            # Verifica se o usuário já existe para não dar conflito (ex: dois 'Jose Silva')
+            user_final = base_user
+            contador = 1
+            while user_final in usuarios_existentes or user_final in [u['usuario'] for u in novos_usuarios]:
+                user_final = f"{base_user.split('@')[0]}{contador}@aluno"
+                contador += 1
+                
+            novos_usuarios.append({
+                "usuario": user_final,
+                "senha": "123", # Senha padrão simples
+                "perfil": "aluno",
+                "nome": nome_str
+            })
+            
+    if novos_usuarios:
+        df_novos = pd.DataFrame(novos_usuarios)
+        df_atualizado = pd.concat([df_usuarios, df_novos], ignore_index=True)
+        if sincronizar_aba_completa("Usuarios", df_atualizado):
+            return True, f"Sucesso! {len(novos_usuarios)} novos logins foram gerados automaticamente."
+        else:
+            return False, "Ocorreu um erro ao salvar os novos logins na planilha."
+    else:
+        return True, "Todos os alunos já possuem login gerado."
+
+# =============================================================================
+# --- FUNÇÕES SECUNDÁRIAS ---
+# =============================================================================
 def carregar_usuarios():
     try:
         df = carregar_tabela_completa("Usuarios")
@@ -224,7 +286,6 @@ def salvar_notas_bd(turma, disciplina, df_resultados):
         if gc:
             ws = gc.open("Base_SEEA").worksheet("Notas")
             df_banco = carregar_tabela_completa("Notas")
-            
             colunas_padrao = ['turma', 'aluno', 'disciplina', 'unidade_1', 'unidade_2', 'unidade_3', 'unidade_4', 'media_final', 'situacao']
             if df_banco.empty: df_banco = pd.DataFrame(columns=colunas_padrao)
             
@@ -265,21 +326,6 @@ def salvar_frequencia_bd(data_aula, turma, assunto, lista_presenca):
             return True
     except Exception as e:
         st.error(f"Erro ao salvar frequência no banco: {e}")
-        return False
-
-def sincronizar_aba_completa(nome_aba, df_editado):
-    try:
-        gc = get_gspread_client()
-        if gc:
-            ws = gc.open("Base_SEEA").worksheet(nome_aba)
-            df_editado = df_editado.fillna("")
-            dados_lista = [df_editado.columns.values.tolist()] + df_editado.values.tolist()
-            ws.clear()
-            ws.update(values=dados_lista, range_name="A1")
-            st.cache_data.clear()
-            return True
-    except Exception as e:
-        st.error(f"Erro ao sincronizar a aba {nome_aba}: {e}")
         return False
 
 def gerar_pdf_boletim(nome_aluno, dados_aluno, df_boletim):
@@ -343,8 +389,6 @@ else:
 if "usuario_logado" not in st.session_state: st.session_state.usuario_logado = None
 if "perfil_logado" not in st.session_state: st.session_state.perfil_logado = None
 if "diario_aberto" not in st.session_state: st.session_state.diario_aberto = False
-
-# Estados da nova funcionalidade de matrícula
 if "mostrar_form_matricula" not in st.session_state: st.session_state.mostrar_form_matricula = False
 if "tipo_matricula_escolhida" not in st.session_state: st.session_state.tipo_matricula_escolhida = None
 
@@ -418,7 +462,6 @@ if st.session_state.usuario_logado is None:
                 st.warning(f"📢 **COMUNICADO OFICIAL ({aviso.get('data', '')}):** {aviso.get('mensagem', '')}", icon="🏫")
             st.markdown("<br>", unsafe_allow_html=True)
     
-    # Se o formulário de matrícula não estiver ativado, mostra a tela normal
     if not st.session_state.mostrar_form_matricula:
         col_login, col_info = st.columns([1, 1.5])
         
@@ -460,9 +503,6 @@ if st.session_state.usuario_logado is None:
                 st.markdown("- **Coord. Infantil:** [(81) 99394-3245](https://wa.me/5581993943245)")
                 st.markdown("- **Coord. Fundamental 1:** [(81) 98508-0876](https://wa.me/5581985080876)")
 
-            # =============================================================================
-            # MENU DE MATRÍCULAS (Gatilho)
-            # =============================================================================
             with st.expander("📝 **MATRÍCULAS**", expanded=False):
                 st.markdown("Selecione o tipo de atendimento desejado para iniciar o processo:")
                 opcao_matricula = st.radio("Tipo de Matrícula:", ["Renovar Matrícula", "Aluno Novo"], label_visibility="collapsed")
@@ -473,7 +513,6 @@ if st.session_state.usuario_logado is None:
                     st.session_state.mostrar_form_matricula = True
                     st.rerun()
                     
-    # ================= MÓDULO DE FORMULÁRIO DE MATRÍCULA =================
     else:
         if st.button("⬅️ Voltar ao Início"):
             st.session_state.mostrar_form_matricula = False
@@ -483,7 +522,6 @@ if st.session_state.usuario_logado is None:
         st.markdown("<div class='matricula-box'>", unsafe_allow_html=True)
         
         with st.form("form_dados_matricula"):
-            # Variável oculta que diz se já é matriculado para o painel admin
             ja_matriculado = "Sim" if st.session_state.tipo_matricula_escolhida == "Renovar Matrícula" else "Não"
             
             if ja_matriculado == "Sim":
@@ -493,7 +531,6 @@ if st.session_state.usuario_logado is None:
                 fone_contato = st.text_input("Telefone para contato do responsável *")
                 alteracoes = st.text_area("Informe se precisa alterar alguma informação na matrícula do ano anterior (Quais?):")
                 
-                # Campos ocultos/vazios para igualar a estrutura da planilha
                 dados_enviar = {
                     "Já Matriculado (Sim/Não)": ja_matriculado, "Nome do aluno(a)": nome_aluno, "Data de nascimento": data_nasc.strftime("%d/%m/%Y"),
                     "Sexo": "-", "Grupo Sanguíneo": "-", "CPF Aluno": "-", "Endereço": "-", "Naturalidade": "-", "Estado": "-",
@@ -505,7 +542,7 @@ if st.session_state.usuario_logado is None:
                     "Telefone Contato (Renovação)": fone_contato, "Alterações (Renovação)": alteracoes
                 }
                 
-            else: # Aluno Novo
+            else:
                 st.markdown("#### Dados do Aluno(a)")
                 c1, c2, c3 = st.columns(3)
                 nome_aluno = c1.text_input("Nome completo do aluno(a) *")
@@ -669,10 +706,26 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
         
     with aba_usuarios:
         st.markdown("### 🔐 Tabela de Usuários")
+        
+        # O NOSSO NOVO "BOTÃO MÁGICO" AQUI
+        col_btn1, col_btn2 = st.columns([2, 1])
+        with col_btn1:
+            st.info("💡 Clique no botão ao lado para gerar senhas e acessos automáticos para todos os novos alunos.")
+        with col_btn2:
+            if st.button("⚡ Gerar Logins de Alunos", type="primary", use_container_width=True):
+                with st.spinner("Analisando e gerando acessos..."):
+                    sucesso, msg = gerar_logins_alunos_automatico()
+                    if sucesso:
+                        st.success(msg)
+                        time.sleep(2)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+                        
         df_usuarios = carregar_tabela_completa("Usuarios")
         if not df_usuarios.empty:
             df_usuarios_editado = st.data_editor(df_usuarios, use_container_width=True, num_rows="dynamic", key="editor_users")
-            if st.button("💾 Sincronizar Senhas", type="primary", use_container_width=True):
+            if st.button("💾 Sincronizar Senhas Manuais", type="secondary", use_container_width=True):
                 if sincronizar_aba_completa("Usuarios", df_usuarios_editado): st.success("✅ Atualizado com sucesso!")
 
     with aba_alunos:
@@ -699,7 +752,6 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
         if not df_matriculas_painel.empty and len(df_matriculas_painel.columns) > 1:
             st.dataframe(df_matriculas_painel, use_container_width=True, hide_index=True)
             
-            # Botão prático para baixar as respostas em Excel
             csv_mat = df_matriculas_painel.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Baixar Fichas de Matrícula em CSV/Excel",
