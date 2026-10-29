@@ -386,13 +386,10 @@ if st.session_state.usuario_logado is None:
         with st.expander("💰 **Financeiro (Pagamentos e Taxas)**", expanded=False):
             st.markdown("Realize o pagamento da sua mensalidade de forma rápida e segura escolhendo uma das opções abaixo:")
             st.markdown("---")
-            
             st.markdown("##### 1. PIX (Cópia e Cola)")
             st.write("Copie a chave PIX (CPF: ELIUDE BERNARDO DE SOUZA SILVA) abaixo usando o botão de copiar à direita:")
             st.code("04994867460", language="text") 
-            
             st.markdown("<br>", unsafe_allow_html=True)
-            
             st.markdown("##### 2. PAGAMENTO NA PLATAFORMA ASAAS")
             st.write("Acesse o link para o portal de pagamentos seguros.")
             st.link_button("💳 Abrir Plataforma ASAAS", "https://api.whatsapp.com/send?phone=5547933007606", use_container_width=True)
@@ -411,6 +408,28 @@ if st.session_state.usuario_logado is None:
             st.markdown("- **Coord. Infantil:** [(81) 99394-3245](https://wa.me/5581993943245)")
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("- **Coord. Fundamental 1:** [(81) 98508-0876](https://wa.me/5581985080876)")
+
+        # =============================================================================
+        # NOVO CÓDIGO: MENU DE MATRÍCULAS
+        # =============================================================================
+        with st.expander("📝 **MATRÍCULAS**", expanded=False):
+            st.markdown("Selecione o tipo de atendimento desejado para iniciar o processo:")
+            
+            # st.radio cria os botões de seleção redondos
+            opcao_matricula = st.radio(
+                "Tipo de Matrícula:", 
+                ["Renovar Matrícula", "Aluno Novo"], 
+                label_visibility="collapsed" # Esconde o título do radio para ficar mais limpo
+            )
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # Botão para o usuário confirmar a escolha
+            if st.button("Avançar ➔", use_container_width=True, type="secondary"):
+                if opcao_matricula == "Renovar Matrícula":
+                    st.info("Redirecionando para a renovação de matrícula... (Ação a ser definida)")
+                elif opcao_matricula == "Aluno Novo":
+                    st.info("Redirecionando para o formulário de novos alunos... (Ação a ser definida)")
 
 elif st.session_state.perfil_logado == "aluno":
     st.markdown(f"<h1 style='text-align: center;'>🎓 Portal do Aluno</h1>", unsafe_allow_html=True)
