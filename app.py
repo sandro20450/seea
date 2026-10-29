@@ -625,8 +625,7 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
     st.markdown("Faça adições, edições ou exclusões diretamente nas tabelas abaixo.")
     
     # NOVO: Adicionado 'Gestão de Matrículas' às Abas da Diretoria, conforme solicitado na imagem
-    aba_metricas, aba_usuarios, aba_alunos, aba_avisos_admin, aba_matriculas = st.tabs(["📊 Visão Geral", "🔐 Gestão de Logins", "🎓 Gestão de Alunos", "📣 Gestão de Avisos", "📝 Gestão de Matrículas"])[cite: 6]
-    
+    aba_metricas, aba_usuarios, aba_alunos, aba_avisos_admin, aba_matriculas = st.tabs(["📊 Visão Geral", "🔐 Gestão de Logins", "🎓 Gestão de Alunos", "📣 Gestão de Avisos", "📝 Gestão de Matrículas"])
     with aba_metricas:
         st.markdown("### 📊 Estatísticas Globais da Escola")
         df_alunos_calc = carregar_tabela_completa("Alunos")
