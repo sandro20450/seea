@@ -96,25 +96,50 @@ def fetch_sheet_data_cached(nome_aba):
     return []
 
 def carregar_tabela_completa(nome_aba):
+    """
+    Função blindada contra o erro de 'Duplicate column names'.
+    Ignora colunas sem cabeçalho e evita nomes repetidos.
+    """
     try:
         dados = fetch_sheet_data_cached(nome_aba)
         if not dados:
             if nome_aba == "Avisos": return pd.DataFrame(columns=["tipo", "aluno", "mensagem", "data"])
-            if nome_aba == "Matriculas": return pd.DataFrame(columns=["Já Matriculado (Sim/Não)"])
+            if nome_aba == "Matriculas": return pd.DataFrame(columns=["Já Matriculado (Sim/Não)", "Nome do aluno(a)"])
             return pd.DataFrame()
-        if len(dados) == 1:
-            df = pd.DataFrame(columns=dados[0])
-        else:
-            df = pd.DataFrame(dados[1:], columns=dados[0])
         
-        # Mantém colunas originais para a aba Matriculas (para ficar bonito no painel)
+        # LÓGICA DE BLINDAGEM DE COLUNAS
+        cabecalhos_brutos = dados[0]
+        cabecalhos_limpos = []
+        indices_validos = []
+        
+        for i, c in enumerate(cabecalhos_brutos):
+            nome_col = str(c).strip()
+            if nome_col != "": # Se a coluna tem um título válido
+                # Se o nome já existir, adiciona um número para não duplicar
+                if nome_col in cabecalhos_limpos:
+                    nome_col = f"{nome_col}_{i}"
+                cabecalhos_limpos.append(nome_col)
+                indices_validos.append(i)
+        
+        if len(dados) == 1:
+            df = pd.DataFrame(columns=cabecalhos_limpos)
+        else:
+            # Constrói a tabela apenas com as colunas válidas
+            dados_filtrados = []
+            for linha in dados[1:]:
+                linha_limpa = [linha[i] if i < len(linha) else "" for i in indices_validos]
+                dados_filtrados.append(linha_limpa)
+            df = pd.DataFrame(dados_filtrados, columns=cabecalhos_limpos)
+        
+        # Mantém colunas originais para a aba Matriculas
         if nome_aba != "Matriculas":
-            df.columns = df.columns.astype(str).str.strip().str.lower()
+            df.columns = df.columns.str.lower()
+            
         return df
     except Exception as e:
         return pd.DataFrame()
 
-# NOVO: Função para salvar a matrícula
+# Função para salvar a matrícula
 def salvar_matricula_bd(dados_dicionario):
     try:
         gc = get_gspread_client()
@@ -125,7 +150,6 @@ def salvar_matricula_bd(dados_dicionario):
             except:
                 ws = sh.add_worksheet(title="Matriculas", rows="100", cols="40")
             
-            # Puxa os dados existentes para ver se já tem cabeçalho
             dados_existentes = ws.get_all_values()
             colunas_novas = list(dados_dicionario.keys())
             
@@ -570,7 +594,6 @@ if st.session_state.usuario_logado is None:
 # ================= TELA ALUNO =================
 elif st.session_state.perfil_logado == "aluno":
     st.markdown(f"<h1 style='text-align: center;'>🎓 Portal do Aluno</h1>", unsafe_allow_html=True)
-    # [O CÓDIGO DA TELA DO ALUNO PERMANECE INTACTO]
     dados_do_aluno = buscar_dados_aluno(st.session_state.usuario_logado)
     if dados_do_aluno:
         st.markdown(f"""
@@ -624,7 +647,6 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
     st.header("👑 Painel da Diretoria - Centro de Controle")
     st.markdown("Faça adições, edições ou exclusões diretamente nas tabelas abaixo.")
     
-    # NOVO: Adicionado 'Gestão de Matrículas' às Abas da Diretoria, conforme solicitado na imagem
     aba_metricas, aba_usuarios, aba_alunos, aba_avisos_admin, aba_matriculas = st.tabs(["📊 Visão Geral", "🔐 Gestão de Logins", "🎓 Gestão de Alunos", "📣 Gestão de Avisos", "📝 Gestão de Matrículas"])
     with aba_metricas:
         st.markdown("### 📊 Estatísticas Globais da Escola")
@@ -669,7 +691,6 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
             if sincronizar_aba_completa("Avisos", df_avisos_editado): 
                 st.success("✅ Avisos publicados com sucesso na plataforma!")
 
-    # NOVO: Aba de visualização das matrículas recebidas pelo site
     with aba_matriculas:
         st.markdown("### 📝 Solicitações de Matrícula (Recebidas do Portal)")
         st.info("💡 As matrículas feitas pelos responsáveis na tela inicial aparecem aqui. A coluna inicial mostra se o aluno já é matriculado.")
@@ -692,7 +713,7 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
 # ================= TELA PROFESSOR =================
 elif st.session_state.perfil_logado == "professor":
     aba_dash, aba_freq, aba_notas, aba_ia = st.tabs(["📊 Dashboard", "📅 Frequência", "📝 Notas", "🤖 Gerador IA"])
-    # [O CÓDIGO DA TELA DO PROFESSOR PERMANECE INTACTO - omitido por brevidade visual, mas incluído o essencial caso execute na nuvem]
+    
     with aba_dash:
         st.markdown("<h2>Meu Desempenho Pedagógico</h2>", unsafe_allow_html=True)
         c1, c2, c3, c4 = st.columns(4)
