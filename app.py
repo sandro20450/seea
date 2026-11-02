@@ -368,9 +368,8 @@ def gerar_pdf_boletim(nome_aluno, dados_aluno, df_boletim):
         
     return pdf.output(dest='S').encode('latin-1')
 
-# NOVO MOTOR: Gera o PDF da Ficha de Matrícula (Contrato)
+# MOTOR: Gera o PDF da Ficha de Matrícula (Contrato)
 def gerar_pdf_ficha_matricula(dados_ficha):
-    """Gera um PDF em formato de contrato/ficha a partir da linha selecionada na tabela."""
     try:
         from fpdf import FPDF
     except ImportError:
@@ -385,7 +384,6 @@ def gerar_pdf_ficha_matricula(dados_ficha):
             self.ln(5)
             
         def footer(self):
-            # Posiciona a linha de assinatura no final da página
             self.set_y(-40)
             self.set_font('Arial', 'B', 10)
             self.cell(0, 10, '_' * 70, 0, 1, 'C')
@@ -395,7 +393,6 @@ def gerar_pdf_ficha_matricula(dados_ficha):
     pdf.add_page()
     
     def limpa_txt(texto):
-        # Remove caracteres problemáticos e garante codificação correta para o PDF
         return str(texto).strip().encode('latin-1', 'replace').decode('latin-1')
 
     pdf.set_font('Arial', 'B', 12)
@@ -405,11 +402,9 @@ def gerar_pdf_ficha_matricula(dados_ficha):
     
     pdf.set_font('Arial', '', 10)
     
-    # Varre a linha selecionada e imprime apenas os campos que foram preenchidos
     for chave, valor in dados_ficha.items():
         val_str = str(valor).strip()
         if val_str != "" and val_str != "-" and val_str != "nan":
-            # Formatação: "Chave: Valor"
             texto_linha = f"{chave}: {val_str}"
             pdf.multi_cell(0, 7, limpa_txt(texto_linha))
             
@@ -796,7 +791,7 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
                 st.success("✅ Avisos publicados com sucesso na plataforma!")
 
     # =============================================================================
-    # NOVO: GESTÃO DE MATRÍCULAS COM SELEÇÃO DINÂMICA
+    # GESTÃO DE MATRÍCULAS COM SELEÇÃO DINÂMICA (CORRIGIDO PARA SINGLE-ROW)
     # =============================================================================
     with aba_matriculas:
         st.markdown("### 📝 Solicitações de Matrícula (Recebidas do Portal)")
@@ -811,8 +806,8 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
                 df_matriculas_painel, 
                 use_container_width=True, 
                 hide_index=True,
-                on_select="rerun",           # Atualiza a tela quando o usuário clica
-                selection_mode="single_row"  # Permite escolher um aluno por vez
+                on_select="rerun",           
+                selection_mode="single-row"  # <- CÓDIGO CORRIGIDO AQUI!
             )
             
             st.markdown("<br>", unsafe_allow_html=True)
