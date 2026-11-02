@@ -170,11 +170,7 @@ def sincronizar_aba_completa(nome_aba, df_editado):
         st.error(f"Erro ao sincronizar a aba {nome_aba}: {e}")
         return False
 
-# =============================================================================
-# --- NOVO: FUNÇÃO DE AUTOMAÇÃO DE LOGINS ---
-# =============================================================================
 def gerar_logins_alunos_automatico():
-    """Lê a lista de alunos, verifica quem não tem login e cria acessos automáticos."""
     df_alunos = carregar_tabela_completa("Alunos")
     df_usuarios = carregar_tabela_completa("Usuarios")
     
@@ -192,14 +188,12 @@ def gerar_logins_alunos_automatico():
     for nome in nomes_alunos:
         nome_str = str(nome).strip()
         if nome_str and nome_str not in nomes_com_login:
-            # Lógica de criação do nome de usuário: "primeironome.ultimonome@aluno"
             partes = nome_str.split()
             if len(partes) > 1:
                 base_user = f"{partes[0].lower()}.{partes[-1].lower()}@aluno"
             else:
                 base_user = f"{partes[0].lower()}@aluno"
                 
-            # Verifica se o usuário já existe para não dar conflito (ex: dois 'Jose Silva')
             user_final = base_user
             contador = 1
             while user_final in usuarios_existentes or user_final in [u['usuario'] for u in novos_usuarios]:
@@ -207,10 +201,7 @@ def gerar_logins_alunos_automatico():
                 contador += 1
                 
             novos_usuarios.append({
-                "usuario": user_final,
-                "senha": "123", # Senha padrão simples
-                "perfil": "aluno",
-                "nome": nome_str
+                "usuario": user_final, "senha": "123", "perfil": "aluno", "nome": nome_str
             })
             
     if novos_usuarios:
@@ -224,7 +215,7 @@ def gerar_logins_alunos_automatico():
         return True, "Todos os alunos já possuem login gerado."
 
 # =============================================================================
-# --- FUNÇÕES SECUNDÁRIAS ---
+# --- FUNÇÕES SECUNDÁRIAS DE DADOS ---
 # =============================================================================
 def carregar_usuarios():
     try:
@@ -328,6 +319,9 @@ def salvar_frequencia_bd(data_aula, turma, assunto, lista_presenca):
         st.error(f"Erro ao salvar frequência no banco: {e}")
         return False
 
+# =============================================================================
+# --- MOTORES DE GERAÇÃO DE PDF ---
+# =============================================================================
 def gerar_pdf_boletim(nome_aluno, dados_aluno, df_boletim):
     try:
         from fpdf import FPDF
@@ -373,6 +367,65 @@ def gerar_pdf_boletim(nome_aluno, dados_aluno, df_boletim):
         pdf.ln()
         
     return pdf.output(dest='S').encode('latin-1')
+
+# NOVO MOTOR: Gera o PDF da Ficha de Matrícula (Contrato)
+def gerar_pdf_ficha_matricula(dados_ficha):
+    """Gera um PDF em formato de contrato/ficha a partir da linha selecionada na tabela."""
+    try:
+        from fpdf import FPDF
+    except ImportError:
+        return None
+        
+    class PDFFicha(FPDF):
+        def header(self):
+            self.set_font('Arial', 'B', 16)
+            self.cell(0, 10, 'SEEA - FICHA DE MATRICULA / CONTRATO', 0, 1, 'C')
+            self.set_font('Arial', 'I', 10)
+            self.cell(0, 5, f'Data de Impressao: {date.today().strftime("%d/%m/%Y")}', 0, 1, 'C')
+            self.ln(5)
+            
+        def footer(self):
+            # Posiciona a linha de assinatura no final da página
+            self.set_y(-40)
+            self.set_font('Arial', 'B', 10)
+            self.cell(0, 10, '_' * 70, 0, 1, 'C')
+            self.cell(0, 5, 'Assinatura do Pai / Mae ou Responsavel Legal', 0, 1, 'C')
+
+    pdf = PDFFicha()
+    pdf.add_page()
+    
+    def limpa_txt(texto):
+        # Remove caracteres problemáticos e garante codificação correta para o PDF
+        return str(texto).strip().encode('latin-1', 'replace').decode('latin-1')
+
+    pdf.set_font('Arial', 'B', 12)
+    pdf.set_fill_color(220, 220, 220)
+    pdf.cell(0, 8, ' DADOS FORNECIDOS NA SOLICITACAO', 0, 1, 'L', fill=True)
+    pdf.ln(3)
+    
+    pdf.set_font('Arial', '', 10)
+    
+    # Varre a linha selecionada e imprime apenas os campos que foram preenchidos
+    for chave, valor in dados_ficha.items():
+        val_str = str(valor).strip()
+        if val_str != "" and val_str != "-" and val_str != "nan":
+            # Formatação: "Chave: Valor"
+            texto_linha = f"{chave}: {val_str}"
+            pdf.multi_cell(0, 7, limpa_txt(texto_linha))
+            
+    pdf.ln(10)
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 8, ' TERMO DE RESPONSABILIDADE', 0, 1, 'L', fill=True)
+    pdf.ln(3)
+    
+    pdf.set_font('Arial', '', 10)
+    termo = ("Declaro para os devidos fins que as informacoes prestadas neste documento sao verdadeiras e assumo "
+             "total responsabilidade sobre as mesmas. Ao assinar este documento, concordo com os termos "
+             "financeiros e pedagogicos da instituicao para o ano letivo vigente, efetivando assim a matricula.")
+    pdf.multi_cell(0, 7, limpa_txt(termo))
+    
+    return pdf.output(dest='S').encode('latin-1')
+
 
 # =============================================================================
 # --- 3. CONFIGURAÇÃO DA INTELIGÊNCIA ARTIFICIAL (GEMINI) ---
@@ -706,8 +759,6 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
         
     with aba_usuarios:
         st.markdown("### 🔐 Tabela de Usuários")
-        
-        # O NOSSO NOVO "BOTÃO MÁGICO" AQUI
         col_btn1, col_btn2 = st.columns([2, 1])
         with col_btn1:
             st.info("💡 Clique no botão ao lado para gerar senhas e acessos automáticos para todos os novos alunos.")
@@ -744,21 +795,68 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
             if sincronizar_aba_completa("Avisos", df_avisos_editado): 
                 st.success("✅ Avisos publicados com sucesso na plataforma!")
 
+    # =============================================================================
+    # NOVO: GESTÃO DE MATRÍCULAS COM SELEÇÃO DINÂMICA
+    # =============================================================================
     with aba_matriculas:
         st.markdown("### 📝 Solicitações de Matrícula (Recebidas do Portal)")
-        st.info("💡 As matrículas feitas pelos responsáveis na tela inicial aparecem aqui. A coluna inicial mostra se o aluno já é matriculado.")
+        st.info("💡 **DICA:** Selecione uma linha na tabela clicando sobre ela para gerar a Ficha de Contrato em PDF para impressão.")
+        
         df_matriculas_painel = carregar_tabela_completa("Matriculas")
         
         if not df_matriculas_painel.empty and len(df_matriculas_painel.columns) > 1:
-            st.dataframe(df_matriculas_painel, use_container_width=True, hide_index=True)
             
+            # Aqui transformamos a tabela num componente interativo onde o admin pode clicar
+            evento_selecao = st.dataframe(
+                df_matriculas_painel, 
+                use_container_width=True, 
+                hide_index=True,
+                on_select="rerun",           # Atualiza a tela quando o usuário clica
+                selection_mode="single_row"  # Permite escolher um aluno por vez
+            )
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # Botão original para baixar TUDO em Excel (Mantido intacto)
             csv_mat = df_matriculas_painel.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="📥 Baixar Fichas de Matrícula em CSV/Excel",
+                label="📥 Baixar Todas as Fichas em CSV/Excel",
                 data=csv_mat,
                 file_name='solicitacoes_matricula_seea.csv',
                 mime='text/csv',
             )
+            
+            # Nova lógica: Se o admin selecionou um aluno na tabela...
+            linhas_selecionadas = evento_selecao.selection.rows
+            if linhas_selecionadas:
+                st.markdown("---")
+                st.markdown("#### 🖨️ Ação Individual (Contrato)")
+                
+                # Pegamos o número da linha clicada
+                idx_selecionado = linhas_selecionadas[0]
+                
+                # Pegamos todos os dados daquela linha e transformamos num dicionário fácil de ler
+                dados_aluno_selecionado = df_matriculas_painel.iloc[idx_selecionado].to_dict()
+                nome_aluno_sel = str(dados_aluno_selecionado.get("Nome do aluno(a)", "Aluno_Selecionado")).strip()
+                
+                st.success(f"O senhor selecionou o aluno: **{nome_aluno_sel}**")
+                
+                # Geramos o PDF nos bastidores
+                pdf_ficha_bytes = gerar_pdf_ficha_matricula(dados_aluno_selecionado)
+                
+                # Exibimos o botão azul grandão para baixar o PDF específico daquela criança
+                if pdf_ficha_bytes:
+                    st.download_button(
+                        label=f"📄 Baixar Ficha de Matrícula PDF - {nome_aluno_sel}",
+                        data=pdf_ficha_bytes,
+                        file_name=f"Ficha_Matricula_{nome_aluno_sel.replace(' ', '_')}.pdf",
+                        mime="application/pdf",
+                        type="primary",
+                        use_container_width=True
+                    )
+                else:
+                    st.error("⚠️ Ocorreu um erro ao gerar o PDF. Verifique se a biblioteca 'fpdf' está instalada no servidor.")
+                    
         else:
             st.warning("Ainda não há nenhuma matrícula registrada ou a aba 'Matriculas' está vazia no banco de dados.")
 
