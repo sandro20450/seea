@@ -741,7 +741,11 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
     st.header("👑 Painel da Diretoria - Centro de Controle")
     st.markdown("Faça adições, edições ou exclusões diretamente nas tabelas abaixo.")
     
-    aba_metricas, aba_usuarios, aba_alunos, aba_avisos_admin, aba_matriculas = st.tabs(["📊 Visão Geral", "🔐 Gestão de Logins", "🎓 Gestão de Alunos", "📣 Gestão de Avisos", "📝 Gestão de Matrículas"])
+    # -------------------------------------------------------------------------
+    # NOVO: Adicionada a aba '🚨 Alertas de Faltas'
+    # -------------------------------------------------------------------------
+    aba_metricas, aba_usuarios, aba_alunos, aba_avisos_admin, aba_matriculas, aba_faltas = st.tabs(["📊 Visão Geral", "🔐 Gestão de Logins", "🎓 Gestão de Alunos", "📣 Gestão de Avisos", "📝 Gestão de Matrículas", "🚨 Alertas de Faltas"])
+    
     with aba_metricas:
         st.markdown("### 📊 Estatísticas Globais da Escola")
         df_alunos_calc = carregar_tabela_completa("Alunos")
@@ -783,9 +787,6 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
             if st.button("💾 Sincronizar Senhas Manuais", type="secondary", use_container_width=True):
                 if sincronizar_aba_completa("Usuarios", df_usuarios_editado): st.success("✅ Atualizado com sucesso!")
                 
-            # =============================================================================
-            # MÓDULO DE INTEGRAÇÃO COM WHATSAPP
-            # =============================================================================
             st.markdown("---")
             st.markdown("#### 📱 Enviar Acesso via WhatsApp")
             
@@ -887,6 +888,56 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
         else:
             st.warning("Ainda não há nenhuma matrícula registada ou a aba 'Matriculas' está vazia na base de dados.")
 
+    # -------------------------------------------------------------------------
+    # NOVO: MÓDULO DE ALERTAS DE FALTAS
+    # -------------------------------------------------------------------------
+    with aba_faltas:
+        st.markdown("### 🚨 Central de Alertas de Faltas")
+        st.info("Aqui a Diretoria visualiza as faltas registradas pelos professores e envia alertas aos responsáveis via WhatsApp oficial da escola.")
+        
+        df_freq = carregar_tabela_completa("Frequencia")
+        df_users = carregar_tabela_completa("Usuarios")
+        
+        if not df_freq.empty and 'status' in df_freq.columns:
+            # Filtrar apenas as faltas registradas com 'F'
+            df_faltas = df_freq[df_freq['status'].astype(str).str.upper() == 'F'].copy()
+            
+            if not df_faltas.empty:
+                st.dataframe(df_faltas[['data', 'turma', 'aluno', 'assunto']], use_container_width=True, hide_index=True)
+                
+                st.markdown("---")
+                st.markdown("#### 📱 Disparar Aviso de Falta")
+                
+                aluno_ausente = st.selectbox("Selecione o aluno ausente para notificar o responsável:", ["Selecione..."] + df_faltas['aluno'].unique().tolist())
+                
+                if aluno_ausente != "Selecione...":
+                    # Procurar o telefone na tabela de Usuários usando o nome do aluno
+                    user_row = df_users[df_users['nome'].astype(str).str.strip() == str(aluno_ausente).strip()]
+                    
+                    if not user_row.empty:
+                        telefone_cru = str(user_row.iloc[0].get('telefone', ''))
+                        
+                        if telefone_cru.strip() != "" and telefone_cru != "-" and telefone_cru != "nan":
+                            telefone_limpo = re.sub(r'\D', '', telefone_cru)
+                            if len(telefone_limpo) <= 11:
+                                telefone_limpo = "55" + telefone_limpo
+                                
+                            data_falta_recente = df_faltas[df_faltas['aluno'] == aluno_ausente].iloc[-1]['data']
+                            
+                            mensagem_falta = f"⚠️ *ESCOLA SEEA - COMUNICADO DE FALTA*\n\nOlá! Somos da secretaria da escola. Registramos que o(a) aluno(a) *{aluno_ausente}* não compareceu à aula no dia *{data_falta_recente}*.\n\nPor favor, caso tenha havido algum imprevisto, responda esta mensagem para justificarmos a ausência no sistema.\n\nAgradecemos a parceria!"
+                            msg_url_falta = urllib.parse.quote(mensagem_falta)
+                            link_whats_falta = f"https://api.whatsapp.com/send?phone={telefone_limpo}&text={msg_url_falta}"
+                            
+                            st.link_button(f"📲 Enviar Alerta de Falta para {telefone_cru}", link_whats_falta, type="primary", use_container_width=True)
+                        else:
+                            st.error(f"⚠️ O aluno {aluno_ausente} não tem telefone cadastrado na aba 'Usuarios'. A Secretaria precisa atualizar os dados.")
+                    else:
+                        st.error(f"⚠️ Aluno '{aluno_ausente}' não encontrado na tabela de 'Usuarios'. Certifique-se de que o aluno possui um login gerado para resgatar o telefone.")
+            else:
+                st.success("✅ Nenhuma falta registrada! Todos os alunos estão presentes.")
+        else:
+            st.warning("⚠️ Ainda não há registros de frequência salvos pelos professores no banco de dados.")
+
 # ================= TELA PROFESSOR =================
 elif st.session_state.perfil_logado == "professor":
     aba_dash, aba_freq, aba_notas, aba_ia = st.tabs(["📊 Dashboard", "📅 Frequência", "📝 Notas", "🤖 Gerador IA"])
@@ -901,11 +952,47 @@ elif st.session_state.perfil_logado == "professor":
     
     with aba_freq:
         st.markdown("<h2>Registro de Frequência</h2>", unsafe_allow_html=True)
-        st.info("Módulo de frequência pronto para operação.")
+        
+        # CÓDIGO DA FREQUÊNCIA DA PROFESSORA
+        st.markdown("<div style='background-color:rgba(128,128,128,0.05); padding:25px; border-radius:12px; border: 1px solid rgba(128,128,128,0.2); margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.03);'>", unsafe_allow_html=True)
+        col_turma, col_data = st.columns(2)
+        
+        lista_turmas = carregar_turmas()
+        with col_turma: selecao_turma = st.selectbox("Turma:", ["Selecione..."] + lista_turmas, key="freq_turma")
+        with col_data: data_aula = st.date_input("Data da Aula:", date.today())
+        
+        assunto_aula = st.text_area("📚 Assunto do Dia / Conteúdo Lecionado:", placeholder="Descreva os conteúdos abordados nesta aula...", height=100)
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        if selecao_turma and selecao_turma != "Selecione...":
+            st.markdown("<div style='display:flex; justify-content:space-between; padding:0 20px; opacity:0.8; font-weight:bold;'><span>ALUNO</span><span>STATUS DE PRESENÇA</span></div><hr style='margin:5px 0; border-top: 2px solid rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
+            
+            lista_alunos = carregar_alunos(selecao_turma)
+            if not lista_alunos:
+                st.warning("Nenhum aluno encontrado para esta turma.")
+            else:
+                lista_presenca = []
+                for aluno in lista_alunos:
+                    ca, cb = st.columns([3, 2])
+                    with ca: st.markdown(f"<span style='font-weight:bold;'>{aluno}</span>", unsafe_allow_html=True)
+                    with cb: 
+                        status_aluno = st.radio("Status", ["P", "F", "FJ"], horizontal=True, label_visibility="collapsed", key=f"rad_{aluno}")
+                        lista_presenca.append({"aluno": aluno, "status": status_aluno})
+                    st.markdown("<hr style='margin:5px 0; opacity:0.1;'>", unsafe_allow_html=True)
+                
+                if st.button("💾 Salvar Chamada Escolar", type="primary", use_container_width=True):
+                    if assunto_aula.strip() == "":
+                        st.warning("⚠️ O assunto da aula não pode estar em branco.")
+                    else:
+                        with st.spinner("Registrando as presenças no sistema..."):
+                            if salvar_frequencia_bd(data_aula, selecao_turma, assunto_aula, lista_presenca):
+                                st.success(f"✅ Frequência do dia {data_aula.strftime('%d/%m/%Y')} registrada e salva com sucesso!")
+        else:
+            st.info("Selecione uma turma para carregar a lista de alunos.")
         
     with aba_notas:
         st.markdown("<h2>Lançamento de Notas</h2>", unsafe_allow_html=True)
-        st.info("Módulo de notas pronto para operação.")
+        st.info("Módulo de notas em manutenção/pronto para operação na aba principal.")
         
     with aba_ia:
         st.markdown("<h2>🤖 Fábrica de Avaliações com IA</h2>", unsafe_allow_html=True)
