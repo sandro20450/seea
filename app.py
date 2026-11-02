@@ -7,6 +7,8 @@ from google.oauth2.service_account import Credentials
 import google.generativeai as genai
 import PyPDF2
 import io
+import urllib.parse
+import re
 
 # =============================================================================
 # --- 1. CONFIGURAÇÕES GERAIS E VISUAIS ---
@@ -100,7 +102,7 @@ def carregar_tabela_completa(nome_aba):
         if not dados:
             if nome_aba == "Avisos": return pd.DataFrame(columns=["tipo", "aluno", "mensagem", "data"])
             if nome_aba == "Matriculas": return pd.DataFrame(columns=["Já Matriculado (Sim/Não)", "Nome do aluno(a)"])
-            if nome_aba == "Usuarios": return pd.DataFrame(columns=["usuario", "senha", "perfil", "nome"])
+            if nome_aba == "Usuarios": return pd.DataFrame(columns=["usuario", "senha", "perfil", "nome", "telefone"])
             return pd.DataFrame()
         
         cabecalhos_brutos = dados[0]
@@ -178,7 +180,7 @@ def gerar_logins_alunos_automatico():
         return False, "Nenhum aluno cadastrado na base de dados para gerar logins."
         
     if df_usuarios.empty:
-        df_usuarios = pd.DataFrame(columns=["usuario", "senha", "perfil", "nome"])
+        df_usuarios = pd.DataFrame(columns=["usuario", "senha", "perfil", "nome", "telefone"])
         
     nomes_alunos = df_alunos['nome_aluno'].dropna().unique()
     nomes_com_login = df_usuarios['nome'].dropna().unique() if 'nome' in df_usuarios.columns else []
@@ -201,7 +203,7 @@ def gerar_logins_alunos_automatico():
                 contador += 1
                 
             novos_usuarios.append({
-                "usuario": user_final, "senha": "123", "perfil": "aluno", "nome": nome_str
+                "usuario": user_final, "senha": "123", "perfil": "aluno", "nome": nome_str, "telefone": "-"
             })
             
     if novos_usuarios:
@@ -515,19 +517,12 @@ if st.session_state.usuario_logado is None:
         with col_login:
             st.markdown("<div class='painel-login'>", unsafe_allow_html=True)
             
-            # =============================================================================
-            # CÓDIGO DA IMAGEM DO LOGÓTIPO - CORRIGIDO PARA TAMANHO PROPORCIONAL
-            # =============================================================================
             try:
-                # Criamos três colunas invisíveis para forçar a imagem a ficar no meio e menor
-                # A proporção [1, 1.2, 1] significa: vazio (esquerda), imagem no meio (um pouco maior), vazio (direita)
                 col_vazia_esq, col_img_centro, col_vazia_dir = st.columns([1, 1.2, 1])
-                
                 with col_img_centro:
                     st.image("logo.png.png", use_container_width=True)
             except Exception as e:
                 pass 
-            # =============================================================================
             
             st.markdown("<h3 style='text-align:center; color:#004d99; margin-bottom: 20px;'>🔐 Acesso ao Painel</h3>", unsafe_allow_html=True)
             user_input = st.text_input("Usuário", placeholder="Digite seu usuário")
@@ -787,6 +782,40 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
             df_usuarios_editado = st.data_editor(df_usuarios, use_container_width=True, num_rows="dynamic", key="editor_users")
             if st.button("💾 Sincronizar Senhas Manuais", type="secondary", use_container_width=True):
                 if sincronizar_aba_completa("Usuarios", df_usuarios_editado): st.success("✅ Atualizado com sucesso!")
+                
+            # =============================================================================
+            # MÓDULO DE INTEGRAÇÃO COM WHATSAPP
+            # =============================================================================
+            st.markdown("---")
+            st.markdown("#### 📱 Enviar Acesso via WhatsApp")
+            
+            if 'telefone' not in df_usuarios.columns:
+                st.warning("⚠️ Crie uma coluna chamada 'telefone' na aba 'Usuarios' do Google Sheets para ativar esta funcionalidade.")
+            else:
+                opcoes_usuarios = df_usuarios['nome'].astype(str) + " (" + df_usuarios['usuario'].astype(str) + ")"
+                user_selecionado = st.selectbox("Selecione o utilizador para enviar a credencial:", ["Selecione..."] + opcoes_usuarios.tolist())
+                
+                if user_selecionado != "Selecione...":
+                    idx = opcoes_usuarios[opcoes_usuarios == user_selecionado].index[0]
+                    dados_user = df_usuarios.iloc[idx]
+                    telefone_cru = str(dados_user.get('telefone', ''))
+                    
+                    if telefone_cru.strip() == "" or telefone_cru == "-" or telefone_cru == "nan":
+                        st.error("⚠️ Este utilizador não tem um número de telefone registado na planilha.")
+                    else:
+                        telefone_limpo = re.sub(r'\D', '', telefone_cru)
+                        if len(telefone_limpo) <= 11:
+                            telefone_limpo = "55" + telefone_limpo
+                            
+                        nome_u = dados_user.get('nome', '')
+                        login_u = dados_user.get('usuario', '')
+                        senha_u = dados_user.get('senha', '')
+                        
+                        mensagem = f"Olá, {nome_u}! Tudo bem?\nEste aqui é o seu login e senha para aceder ao portal da ESCOLA SEEA.\n\n👤 *Utilizador:* {login_u}\n🔑 *Senha:* {senha_u}\n\nAceda através do nosso portal!"
+                        msg_url = urllib.parse.quote(mensagem)
+                        link_whats = f"https://api.whatsapp.com/send?phone={telefone_limpo}&text={msg_url}"
+                        
+                        st.link_button(f"💬 Enviar Mensagem para {telefone_cru}", link_whats, type="primary", use_container_width=True)
 
     with aba_alunos:
         st.markdown("### 🎓 Tabela de Matrículas")
@@ -839,7 +868,7 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
                 dados_aluno_selecionado = df_matriculas_painel.iloc[idx_selecionado].to_dict()
                 nome_aluno_sel = str(dados_aluno_selecionado.get("Nome do aluno(a)", "Aluno_Selecionado")).strip()
                 
-                st.success(f"O senhor selecionou o aluno: **{nome_aluno_sel}**")
+                st.success(f"O utilizador selecionou o aluno: **{nome_aluno_sel}**")
                 
                 pdf_ficha_bytes = gerar_pdf_ficha_matricula(dados_aluno_selecionado)
                 
@@ -856,7 +885,7 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
                     st.error("⚠️ Ocorreu um erro ao gerar o PDF. Verifique se a biblioteca 'fpdf' está instalada no servidor.")
                     
         else:
-            st.warning("Ainda não há nenhuma matrícula registrada ou a aba 'Matriculas' está vazia no banco de dados.")
+            st.warning("Ainda não há nenhuma matrícula registada ou a aba 'Matriculas' está vazia na base de dados.")
 
 # ================= TELA PROFESSOR =================
 elif st.session_state.perfil_logado == "professor":
