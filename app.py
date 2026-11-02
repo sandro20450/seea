@@ -516,10 +516,15 @@ if st.session_state.usuario_logado is None:
             st.markdown("<div class='painel-login'>", unsafe_allow_html=True)
             
             # =============================================================================
-            # CÓDIGO DA IMAGEM DO LOGÓTIPO ATUALIZADO AQUI
+            # CÓDIGO DA IMAGEM DO LOGÓTIPO - CORRIGIDO PARA TAMANHO PROPORCIONAL
             # =============================================================================
             try:
-                st.image("logo.png.png", use_container_width=True)
+                # Criamos três colunas invisíveis para forçar a imagem a ficar no meio e menor
+                # A proporção [1, 1.2, 1] significa: vazio (esquerda), imagem no meio (um pouco maior), vazio (direita)
+                col_vazia_esq, col_img_centro, col_vazia_dir = st.columns([1, 1.2, 1])
+                
+                with col_img_centro:
+                    st.image("logo.png.png", use_container_width=True)
             except Exception as e:
                 pass 
             # =============================================================================
