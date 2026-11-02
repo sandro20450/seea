@@ -368,7 +368,6 @@ def gerar_pdf_boletim(nome_aluno, dados_aluno, df_boletim):
         
     return pdf.output(dest='S').encode('latin-1')
 
-# MOTOR: Gera o PDF da Ficha de Matrícula (Contrato)
 def gerar_pdf_ficha_matricula(dados_ficha):
     try:
         from fpdf import FPDF
@@ -515,6 +514,16 @@ if st.session_state.usuario_logado is None:
         
         with col_login:
             st.markdown("<div class='painel-login'>", unsafe_allow_html=True)
+            
+            # =============================================================================
+            # CÓDIGO DA IMAGEM DO LOGÓTIPO ATUALIZADO AQUI
+            # =============================================================================
+            try:
+                st.image("logo.png.png", use_container_width=True)
+            except Exception as e:
+                pass 
+            # =============================================================================
+            
             st.markdown("<h3 style='text-align:center; color:#004d99; margin-bottom: 20px;'>🔐 Acesso ao Painel</h3>", unsafe_allow_html=True)
             user_input = st.text_input("Usuário", placeholder="Digite seu usuário")
             pass_input = st.text_input("Senha", type="password", placeholder="Digite sua senha")
@@ -790,9 +799,6 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
             if sincronizar_aba_completa("Avisos", df_avisos_editado): 
                 st.success("✅ Avisos publicados com sucesso na plataforma!")
 
-    # =============================================================================
-    # GESTÃO DE MATRÍCULAS COM SELEÇÃO DINÂMICA (CORRIGIDO PARA SINGLE-ROW)
-    # =============================================================================
     with aba_matriculas:
         st.markdown("### 📝 Solicitações de Matrícula (Recebidas do Portal)")
         st.info("💡 **DICA:** Selecione uma linha na tabela clicando sobre ela para gerar a Ficha de Contrato em PDF para impressão.")
@@ -800,19 +806,16 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
         df_matriculas_painel = carregar_tabela_completa("Matriculas")
         
         if not df_matriculas_painel.empty and len(df_matriculas_painel.columns) > 1:
-            
-            # Aqui transformamos a tabela num componente interativo onde o admin pode clicar
             evento_selecao = st.dataframe(
                 df_matriculas_painel, 
                 use_container_width=True, 
                 hide_index=True,
                 on_select="rerun",           
-                selection_mode="single-row"  # <- CÓDIGO CORRIGIDO AQUI!
+                selection_mode="single-row"  
             )
             
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # Botão original para baixar TUDO em Excel (Mantido intacto)
             csv_mat = df_matriculas_painel.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Baixar Todas as Fichas em CSV/Excel",
@@ -821,25 +824,20 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
                 mime='text/csv',
             )
             
-            # Nova lógica: Se o admin selecionou um aluno na tabela...
             linhas_selecionadas = evento_selecao.selection.rows
             if linhas_selecionadas:
                 st.markdown("---")
                 st.markdown("#### 🖨️ Ação Individual (Contrato)")
                 
-                # Pegamos o número da linha clicada
                 idx_selecionado = linhas_selecionadas[0]
                 
-                # Pegamos todos os dados daquela linha e transformamos num dicionário fácil de ler
                 dados_aluno_selecionado = df_matriculas_painel.iloc[idx_selecionado].to_dict()
                 nome_aluno_sel = str(dados_aluno_selecionado.get("Nome do aluno(a)", "Aluno_Selecionado")).strip()
                 
                 st.success(f"O senhor selecionou o aluno: **{nome_aluno_sel}**")
                 
-                # Geramos o PDF nos bastidores
                 pdf_ficha_bytes = gerar_pdf_ficha_matricula(dados_aluno_selecionado)
                 
-                # Exibimos o botão azul grandão para baixar o PDF específico daquela criança
                 if pdf_ficha_bytes:
                     st.download_button(
                         label=f"📄 Baixar Ficha de Matrícula PDF - {nome_aluno_sel}",
