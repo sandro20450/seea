@@ -216,9 +216,6 @@ def gerar_logins_alunos_automatico():
     else:
         return True, "Todos os alunos já possuem login gerado."
 
-# =============================================================================
-# --- FUNÇÕES SECUNDÁRIAS DE DADOS ---
-# =============================================================================
 def carregar_usuarios():
     try:
         df = carregar_tabela_completa("Usuarios")
@@ -322,7 +319,7 @@ def salvar_frequencia_bd(data_aula, turma, assunto, lista_presenca):
         return False
 
 # =============================================================================
-# --- MOTORES DE GERAÇÃO DE PDF ---
+# --- MOTORES DE GERAÇÃO DE DOCUMENTOS (PDF e DOCX) ---
 # =============================================================================
 def gerar_pdf_boletim(nome_aluno, dados_aluno, df_boletim):
     try:
@@ -370,178 +367,136 @@ def gerar_pdf_boletim(nome_aluno, dados_aluno, df_boletim):
         
     return pdf.output(dest='S').encode('latin-1')
 
-# =============================================================================
-# NOVO MOTOR DE PDF (IDÊNTICO AO MODELO DA ESCOLA DOCX)
-# =============================================================================
-def gerar_pdf_ficha_matricula(dados_ficha):
+# -----------------------------------------------------------------------------
+# NOVO MOTOR: GERAÇÃO DA FICHA EM MICROSOFT WORD (.DOCX)
+# -----------------------------------------------------------------------------
+def gerar_docx_ficha_matricula(dados_ficha):
+    """Cria um ficheiro Word formatado replicando o modelo oficial da escola."""
     try:
-        from fpdf import FPDF
+        from docx import Document
+        from docx.shared import Pt, Inches
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
     except ImportError:
+        st.error("Biblioteca 'python-docx' não encontrada. Verifique o requirements.txt.")
         return None
         
-    class PDFFicha(FPDF):
-        def header(self):
-            # Tenta inserir o logótipo oficial. Se não encontrar o ficheiro, ignora e segue a construir o texto.
-            try:
-                self.image("logo.png.png", 10, 8, 30)
-            except:
-                pass
-            
-            # Cabeçalho da instituição, alinhado à direita do logótipo
-            self.set_font('Arial', 'B', 16)
-            self.cell(35)
-            self.cell(0, 8, 'Sistema Educacional Espaco Aberto', 0, 1, 'L')
-            self.set_font('Arial', '', 8)
-            self.cell(35)
-            texto_cabecalho = (
-                "Rua Antonio Jose de Paiva, S/N Real Vitoria - Q. 17  L.05 A1\n"
-                "N. Sra do Amparo, Vitoria de Sto Antao -PE  CEP: 55.615-015   Fone: (81) 98328-8495\n"
-                "CNPJ/19.034.002/0001-20   Portaria n 623 de 05/02/2016   D.O 06/02/2016   Cadastro: P-211.084"
-            )
-            self.multi_cell(0, 4, texto_cabecalho, 0, 'L')
-            self.ln(5)
+    doc = Document()
+    
+    # 1. CABEÇALHO COM LOGÓTIPO E TEXTO DA ESCOLA
+    try:
+        doc.add_picture('logo.png.png', width=Inches(1.5))
+        doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+    except:
+        pass # Se não encontrar o logo, segue em frente sem quebrar
+        
+    p_cabecalho = doc.add_paragraph()
+    p_cabecalho.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_titulo = p_cabecalho.add_run('Sistema Educacional Espaço Aberto\n')
+    run_titulo.bold = True
+    run_titulo.font.size = Pt(14)
+    
+    run_end = p_cabecalho.add_run('Rua Antônio José de Paiva, S/N Real Vitória - Q. 17 L.05 A1\nN. Srª do Amparo, Vitória de Stº Antão -PE CEP: 55.615-015 Fone: (81) 98328-8495\nCNPJ/19.034.002/0001-20')
+    run_end.font.size = Pt(8)
+    
+    # 2. TÍTULO DO DOCUMENTO
+    p_titulo = doc.add_paragraph()
+    p_titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_f = p_titulo.add_run('\nFICHA DE MATRÍCULA\n')
+    run_f.bold = True
+    run_f.font.size = Pt(14)
 
-        def footer(self):
-            # Assinatura digital do sistema no rodapé da página
-            self.set_y(-15)
-            self.set_font('Arial', 'I', 8)
-            self.cell(0, 10, f'Impresso em {date.today().strftime("%d/%m/%Y")} pelo Portal SEEA', 0, 0, 'C')
+    # Função interna para facilitar a escrita das linhas com "Rótulo: Valor"
+    def add_campo(paragrafo, rotulo, valor):
+        r1 = paragrafo.add_run(f'{rotulo}: ')
+        r1.bold = True
+        paragrafo.add_run(f'{valor}    ')
+        
+    def add_secao(titulo):
+        p = doc.add_paragraph()
+        run = p.add_run(f'\n{titulo}')
+        run.bold = True
+        run.font.size = Pt(11)
+        return doc.add_paragraph()
 
-    pdf = PDFFicha()
-    pdf.add_page()
+    # 3. DADOS DO ALUNO
+    p_aluno = add_secao('DADOS DO ALUNO')
+    add_campo(p_aluno, 'Nome', dados_ficha.get('Nome do aluno(a)', ''))
+    add_campo(p_aluno, 'Data de Nascimento', dados_ficha.get('Data de nascimento', ''))
+    add_campo(p_aluno, 'Sexo', dados_ficha.get('Sexo', ''))
     
-    # Função auxiliar para garantir que a acentuação não desformata o PDF
-    def limpa(texto):
-        return str(texto).strip().encode('latin-1', 'replace').decode('latin-1')
+    p_aluno_2 = doc.add_paragraph()
+    add_campo(p_aluno_2, 'Grupo Sanguíneo/Fator RH', dados_ficha.get('Grupo Sanguíneo', ''))
+    add_campo(p_aluno_2, 'CPF', dados_ficha.get('CPF Aluno', ''))
+    
+    p_aluno_3 = doc.add_paragraph()
+    add_campo(p_aluno_3, 'Endereço', dados_ficha.get('Endereço', ''))
+    
+    p_aluno_4 = doc.add_paragraph()
+    add_campo(p_aluno_4, 'Naturalidade', dados_ficha.get('Naturalidade', ''))
+    add_campo(p_aluno_4, 'Estado', dados_ficha.get('Estado', ''))
+    
+    p_aluno_5 = doc.add_paragraph()
+    add_campo(p_aluno_5, 'NIS', dados_ficha.get('NIS Aluno', ''))
+    add_campo(p_aluno_5, 'NIS do Responsável', dados_ficha.get('NIS Responsável', ''))
+    add_campo(p_aluno_5, 'SUS', dados_ficha.get('SUS/Plano de Saúde', ''))
+    
+    p_aluno_6 = doc.add_paragraph()
+    add_campo(p_aluno_6, 'Cor', dados_ficha.get('Cor', ''))
+    add_campo(p_aluno_6, 'Religião', dados_ficha.get('Religião Aluno', ''))
 
-    # Desenhando o quadro para a Fotografia 3x4 no canto superior direito
-    pdf.rect(170, 10, 30, 40)
-    pdf.set_xy(170, 25)
-    pdf.set_font('Arial', '', 8)
-    pdf.cell(30, 5, 'FOTO 3X4', 0, 0, 'C')
+    # 4. DADOS DO PAI
+    p_pai = add_secao('DADOS DO PAI')
+    add_campo(p_pai, 'Nome', dados_ficha.get('Nome do Pai', ''))
+    add_campo(p_pai, 'CPF', dados_ficha.get('CPF Pai', ''))
     
-    # Ajustando o cursor vertical (Y) para baixo do cabeçalho
-    pdf.set_y(42)
-    pdf.set_font('Arial', 'B', 14)
-    pdf.cell(0, 8, 'FICHA DE MATRICULA', 0, 1, 'C')
+    p_pai2 = doc.add_paragraph()
+    add_campo(p_pai2, 'Profissão', dados_ficha.get('Profissão Pai', ''))
+    add_campo(p_pai2, 'Estado Civil', dados_ficha.get('Estado Civil Pai', ''))
+    add_campo(p_pai2, 'Grau de Instrução', dados_ficha.get('Grau Instrução Pai', ''))
     
-    # === BLOCO: SÉRIE, TURMA E TURNO ===
-    pdf.set_font('Arial', 'B', 9)
-    pdf.set_fill_color(220, 220, 220)
-    pdf.cell(0, 6, limpa(' SÉRIE ATUAL | Ensino Fundamental - Anos iniciais'), 1, 1, 'L', fill=True)
-    pdf.set_font('Arial', '', 8)
-    pdf.cell(0, 5, limpa('TURMA:  (  ) 1º Ano   (  ) 2º Ano   (  ) 3º Ano   (  ) 4º Ano   (  ) 5º Ano'), 'L R', 1)
-    pdf.cell(0, 5, limpa('TURNO:  (  ) Manhã    (  ) Tarde'), 'L B R', 1)
+    p_pai3 = doc.add_paragraph()
+    add_campo(p_pai3, 'Telefone Pessoal', dados_ficha.get('Fone Pessoal Pai', ''))
+    add_campo(p_pai3, 'WhatsApp', dados_ficha.get('Fone Trabalho Pai', ''))
     
-    # === BLOCO: COMPONENTES CURRICULARES ===
-    pdf.set_font('Arial', 'B', 8)
-    pdf.cell(0, 5, limpa('COMPONENTES CURRICULARES:'), 'L T R', 1)
-    pdf.set_font('Arial', '', 7)
-    pdf.cell(0, 5, limpa('Língua Portuguesa - Matemática - História - Geografia - Ciências - Arte - Ensino Religioso - Educação Física'), 'L B R', 1)
-    pdf.ln(3)
+    p_pai4 = doc.add_paragraph()
+    add_campo(p_pai4, 'E-mail', dados_ficha.get('Email Pai', ''))
+    
+    # 5. DADOS DA MÃE
+    p_mae = add_secao('DADOS DA MÃE')
+    add_campo(p_mae, 'Nome', dados_ficha.get('Nome da Mãe', ''))
+    add_campo(p_mae, 'CPF', dados_ficha.get('CPF Mãe', ''))
+    
+    p_mae2 = doc.add_paragraph()
+    add_campo(p_mae2, 'Profissão', dados_ficha.get('Profissão Mãe', ''))
+    add_campo(p_mae2, 'Estado Civil', dados_ficha.get('Estado Civil Mãe', ''))
+    add_campo(p_mae2, 'Grau de Instrução', dados_ficha.get('Grau Instrução Mãe', ''))
+    
+    p_mae3 = doc.add_paragraph()
+    add_campo(p_mae3, 'Telefone Pessoal', dados_ficha.get('Fone Pessoal Mãe', ''))
+    add_campo(p_mae3, 'WhatsApp', dados_ficha.get('Fone Trabalho Mãe', ''))
+    
+    p_mae4 = doc.add_paragraph()
+    add_campo(p_mae4, 'E-mail', dados_ficha.get('Email Mãe', ''))
 
-    # === BLOCO: DADOS DO ALUNO ===
-    pdf.set_font('Arial', 'B', 9)
-    pdf.cell(0, 6, limpa(' DADOS DO ALUNO'), 1, 1, 'L', fill=True)
-    pdf.set_font('Arial', '', 8)
+    # 6. ESPAÇOS PARA PREENCHIMENTO MANUAL E ASSINATURAS (Como no seu modelo DOCX)
+    add_secao('DADOS COMPLEMENTARES (Para preenchimento manual da Secretaria)')
+    doc.add_paragraph('Responsável Financeiro: ___________________________________________________________')
+    doc.add_paragraph('Grau de Parentesco: ________________________ Telefone: _____________________________')
+    doc.add_paragraph('Pessoas Autorizadas a buscar o aluno: _____________________________________________')
+    doc.add_paragraph('Em caso de emergência encaminhar para: __________________________________________')
+    doc.add_paragraph('Plano de Saúde: ___________________________________________________________________')
     
-    nome = dados_ficha.get('Nome do aluno(a)', '')
-    dt_nasc = dados_ficha.get('Data de nascimento', '')
-    sexo = dados_ficha.get('Sexo', '')
-    pdf.cell(100, 5, limpa(f'Nome: {nome}'), 'L B', 0)
-    pdf.cell(40, 5, limpa(f'Sexo: {sexo}'), 'B', 0)
-    pdf.cell(0, 5, limpa(f'Nasc: {dt_nasc}'), 'B R', 1)
+    p_data = doc.add_paragraph(f'\nVitória de Santo Antão, {date.today().strftime("%d/%m/%Y")}')
+    p_data.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
-    sangue = dados_ficha.get('Grupo Sanguíneo', '')
-    cpf_aluno = dados_ficha.get('CPF Aluno', '')
-    pdf.cell(100, 5, limpa(f'Grupo Sanguíneo/Fator RH: {sangue}'), 'L B', 0)
-    pdf.cell(0, 5, limpa(f'CPF: {cpf_aluno}'), 'B R', 1)
-    
-    end = dados_ficha.get('Endereço', '')
-    pdf.cell(0, 5, limpa(f'Endereço: {end}'), 'L B R', 1)
-    
-    nat = dados_ficha.get('Naturalidade', '')
-    est = dados_ficha.get('Estado', '')
-    pdf.cell(90, 5, limpa(f'Naturalidade: {nat}'), 'L B', 0)
-    pdf.cell(0, 5, limpa(f'Estado: {est}'), 'B R', 1)
-    
-    nis = dados_ficha.get('NIS Aluno', '')
-    nis_resp = dados_ficha.get('NIS Responsável', '')
-    sus = dados_ficha.get('SUS/Plano de Saúde', '')
-    pdf.cell(65, 5, limpa(f'NIS: {nis}'), 'L B', 0)
-    pdf.cell(65, 5, limpa(f'NIS do Resp.: {nis_resp}'), 'B', 0)
-    pdf.cell(0, 5, limpa(f'SUS: {sus}'), 'B R', 1)
-    
-    cor = dados_ficha.get('Cor', '')
-    rel = dados_ficha.get('Religião Aluno', '')
-    pdf.cell(90, 5, limpa(f'Cor: {cor}'), 'L B', 0)
-    pdf.cell(0, 5, limpa(f'Religião: {rel}'), 'B R', 1)
-    
-    pdf.cell(0, 5, limpa('Forma de pagamento das mensalidades: (  ) Integral    (  ) Bolsa de estudos'), 'L B R', 1)
-    pdf.ln(3)
+    p_ass = doc.add_paragraph('\n\n_______________________________________________\nAssinatura do responsável\n\n\n_______________________________________________\nResponsável pelo preenchimento (secretária)')
+    p_ass.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    # === BLOCO: DADOS DO PAI ===
-    pdf.set_font('Arial', 'B', 9)
-    pdf.cell(0, 6, limpa(' DADOS DO PAI'), 1, 1, 'L', fill=True)
-    pdf.set_font('Arial', '', 8)
-    pdf.cell(120, 5, limpa(f"Nome: {dados_ficha.get('Nome do Pai', '')}"), 'L B', 0)
-    pdf.cell(0, 5, limpa(f"CPF: {dados_ficha.get('CPF Pai', '')}"), 'B R', 1)
-    pdf.cell(90, 5, limpa(f"Religião: {dados_ficha.get('Religião Pai', '')}"), 'L B', 0)
-    pdf.cell(0, 5, limpa(f"Grau de instrução: {dados_ficha.get('Grau Instrução Pai', '')}"), 'B R', 1)
-    pdf.cell(90, 5, limpa(f"Profissão: {dados_ficha.get('Profissão Pai', '')}"), 'L B', 0)
-    pdf.cell(0, 5, limpa(f"Estado civil: {dados_ficha.get('Estado Civil Pai', '')}"), 'B R', 1)
-    pdf.cell(65, 5, limpa(f"Telefone pessoal: {dados_ficha.get('Fone Pessoal Pai', '')}"), 'L B', 0)
-    pdf.cell(65, 5, limpa(f"WhatsApp: {dados_ficha.get('Fone Trabalho Pai', '')}"), 'B', 0)
-    pdf.cell(0, 5, limpa(f"E-mail: {dados_ficha.get('Email Pai', '')}"), 'B R', 1)
-    pdf.ln(3)
-
-    # === BLOCO: DADOS DA MÃE ===
-    pdf.set_font('Arial', 'B', 9)
-    pdf.cell(0, 6, limpa(' DADOS DA MÃE'), 1, 1, 'L', fill=True)
-    pdf.set_font('Arial', '', 8)
-    pdf.cell(120, 5, limpa(f"Nome: {dados_ficha.get('Nome da Mãe', '')}"), 'L B', 0)
-    pdf.cell(0, 5, limpa(f"CPF: {dados_ficha.get('CPF Mãe', '')}"), 'B R', 1)
-    pdf.cell(90, 5, limpa(f"Religião: {dados_ficha.get('Religião Mãe', '')}"), 'L B', 0)
-    pdf.cell(0, 5, limpa(f"Grau de instrução: {dados_ficha.get('Grau Instrução Mãe', '')}"), 'B R', 1)
-    pdf.cell(90, 5, limpa(f"Profissão: {dados_ficha.get('Profissão Mãe', '')}"), 'L B', 0)
-    pdf.cell(0, 5, limpa(f"Estado civil: {dados_ficha.get('Estado Civil Mãe', '')}"), 'B R', 1)
-    pdf.cell(65, 5, limpa(f"Telefone pessoal: {dados_ficha.get('Fone Pessoal Mãe', '')}"), 'L B', 0)
-    pdf.cell(65, 5, limpa(f"WhatsApp: {dados_ficha.get('Fone Trabalho Mãe', '')}"), 'B', 0)
-    pdf.cell(0, 5, limpa(f"E-mail: {dados_ficha.get('Email Mãe', '')}"), 'B R', 1)
-    pdf.ln(3)
-
-    # === BLOCO: DADOS MANUAIS DO MODELO (Para a escola preencher/assinar à mão) ===
-    pdf.set_font('Arial', 'B', 8)
-    pdf.cell(0, 5, limpa('Dados do responsável legal do(a) aluno(a) / Financeiro:'), 'L T R', 1)
-    pdf.set_font('Arial', '', 8)
-    pdf.cell(0, 5, limpa('Nome: _________________________________________________________________________________'), 'L R', 1)
-    pdf.cell(0, 5, limpa('Grau de parentesco: ____________________ Telefone: __________________ WhatsApp: ___________'), 'L B R', 1)
-    
-    pdf.set_font('Arial', 'B', 8)
-    pdf.cell(0, 5, limpa('Portadores autorizados (além dos pais e responsáveis) / Notificação de Urgência:'), 'L T R', 1)
-    pdf.set_font('Arial', '', 8)
-    pdf.cell(0, 5, limpa('1. Nome: _____________________________________________ Telefone: _________________________'), 'L R', 1)
-    pdf.cell(0, 5, limpa('2. Nome: _____________________________________________ Telefone: _________________________'), 'L B R', 1)
-    
-    pdf.set_font('Arial', 'B', 8)
-    pdf.cell(0, 5, limpa('Em caso de emergência, encaminhar para:'), 'L T R', 1)
-    pdf.set_font('Arial', '', 8)
-    pdf.cell(0, 5, limpa('(  ) Posto médico   (  ) Apami   (  ) João Murilo   (  ) Santa Maria'), 'L R', 1)
-    pdf.cell(0, 5, limpa('Plano de Saúde: ________________________________________________________________________'), 'L B R', 1)
-    
-    pdf.ln(5)
-    pdf.set_font('Arial', '', 9)
-    # Gera a data automática com a localidade oficial
-    pdf.cell(0, 5, limpa(f'Vitória de Santo Antão, {date.today().strftime("%d/%m/%Y")}'), 0, 1, 'C')
-    
-    # Espaço para as assinaturas formais
-    pdf.ln(8)
-    pdf.cell(95, 5, limpa('_______________________________________________'), 0, 0, 'C')
-    pdf.cell(95, 5, limpa('_______________________________________________'), 0, 1, 'C')
-    pdf.cell(95, 5, limpa('Assinatura do responsável'), 0, 0, 'C')
-    pdf.cell(95, 5, limpa('Responsável pelo preenchimento (secretária)'), 0, 1, 'C')
-
-    return pdf.output(dest='S').encode('latin-1')
+    # Converte o documento Word criado em "bytes" para o Streamlit conseguir descarregar
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
 
 
 # =============================================================================
@@ -954,7 +909,7 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
 
     with aba_matriculas:
         st.markdown("### 📝 Solicitações de Matrícula (Recebidas do Portal)")
-        st.info("💡 **DICA:** Selecione uma linha na tabela clicando sobre ela para gerar a Ficha de Contrato em PDF para impressão.")
+        st.info("💡 **DICA:** Selecione uma linha na tabela clicando sobre ela para gerar a Ficha de Contrato em DOCX (Word).")
         
         df_matriculas_painel = carregar_tabela_completa("Matriculas")
         
@@ -989,19 +944,22 @@ elif st.session_state.perfil_logado in ["admin", "diretoria"]:
                 
                 st.success(f"O utilizador selecionou o aluno: **{nome_aluno_sel}**")
                 
-                pdf_ficha_bytes = gerar_pdf_ficha_matricula(dados_aluno_selecionado)
+                # =========================================================
+                # NOVO: CHAMA A GERAÇÃO DE WORD (.DOCX) AQUI
+                # =========================================================
+                docx_ficha_bytes = gerar_docx_ficha_matricula(dados_aluno_selecionado)
                 
-                if pdf_ficha_bytes:
+                if docx_ficha_bytes:
                     st.download_button(
-                        label=f"📄 Baixar Ficha de Matrícula PDF - {nome_aluno_sel}",
-                        data=pdf_ficha_bytes,
-                        file_name=f"Ficha_Matricula_{nome_aluno_sel.replace(' ', '_')}.pdf",
-                        mime="application/pdf",
+                        label=f"📄 Baixar Ficha de Matrícula (WORD) - {nome_aluno_sel}",
+                        data=docx_ficha_bytes,
+                        file_name=f"Ficha_Matricula_{nome_aluno_sel.replace(' ', '_')}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         type="primary",
                         use_container_width=True
                     )
                 else:
-                    st.error("⚠️ Ocorreu um erro ao gerar o PDF. Verifique se a biblioteca 'fpdf' está instalada no servidor.")
+                    st.error("⚠️ Ocorreu um erro ao gerar o documento Word. Confirme que adicionou 'python-docx' no ficheiro requirements.txt no GitHub.")
                     
         else:
             st.warning("Ainda não há nenhuma matrícula registada ou a aba 'Matriculas' está vazia na base de dados.")
